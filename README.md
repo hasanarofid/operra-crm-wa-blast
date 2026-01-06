@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="public/images/logo_operra.png" alt="Operra Logo" width="150">
+</p>
+
 # Operra - Business Operations Control Panel
 
 Operra adalah sistem internal bisnis *production-ready* yang dirancang untuk UKM (SME) dan startup yang sedang berkembang. Sistem ini berfokus pada efisiensi operasional, pengambilan keputusan berbasis data, dan skalabilitas alur kerja.
