@@ -15,7 +15,7 @@ class SalesOrderController extends Controller
     public function index()
     {
         return Inertia::render('ERP/Sales/Orders/Index', [
-            'orders' => SalesOrder::with('customer')->latest()->paginate(10)
+            'orders' => SalesOrder::with(['customer', 'invoice'])->latest()->paginate(10)
         ]);
     }
 
