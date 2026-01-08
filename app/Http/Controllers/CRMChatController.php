@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\ChatSession;
 use App\Models\ChatMessage;
 use App\Models\WhatsappAccount;
+use App\Services\WhatsAppService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -15,6 +16,9 @@ class CRMChatController extends Controller
         $user = $request->user();
         
         $sessionsQuery = ChatSession::with(['customer', 'assignedUser', 'whatsappAccount'])
+            ->withCount(['messages as unread_count' => function($query) {
+                $query->where('sender_type', 'customer')->whereNull('read_at');
+            }])
             ->orderBy('last_message_at', 'desc');
 
         // RBAC: Sales only see their assigned chats
@@ -22,8 +26,13 @@ class CRMChatController extends Controller
             $sessionsQuery->where('assigned_user_id', $user->id);
         }
 
+        $sessions = $sessionsQuery->get()->map(function($session) {
+            $session->is_unread = $session->unread_count > 0;
+            return $session;
+        });
+
         return Inertia::render('CRM/Chat/Inbox', [
-            'sessions' => $sessionsQuery->get(),
+            'sessions' => $sessions,
             'whatsappAccounts' => WhatsappAccount::where('status', 'active')->get(),
         ]);
     }
@@ -36,6 +45,12 @@ class CRMChatController extends Controller
         if ($user->hasRole('sales') && $chatSession->assigned_user_id !== $user->id) {
             abort(403, 'Unauthorized access to this chat.');
         }
+
+        // Mark messages as read
+        ChatMessage::where('chat_session_id', $chatSession->id)
+            ->where('sender_type', 'customer')
+            ->whereNull('read_at')
+            ->update(['read_at' => now()]);
 
         $chatSession->load(['customer', 'assignedUser', 'whatsappAccount']);
         $messages = ChatMessage::where('chat_session_id', $chatSession->id)
@@ -55,16 +70,29 @@ class CRMChatController extends Controller
             'message' => 'required|string',
         ]);
 
-        $message = ChatMessage::create([
-            'chat_session_id' => $chatSession->id,
-            'sender_id' => $request->user()->id,
-            'sender_type' => 'user',
-            'message_body' => $request->message,
-            'message_type' => 'text',
-        ]);
+        $account = $chatSession->whatsappAccount;
+        $waService = new WhatsAppService();
+        
+        $result = $waService->sendMessage(
+            $chatSession->customer->phone_number,
+            $request->message,
+            $account
+        );
 
-        $chatSession->update(['last_message_at' => now()]);
+        if ($result['status']) {
+            $message = ChatMessage::create([
+                'chat_session_id' => $chatSession->id,
+                'sender_id' => $request->user()->id,
+                'sender_type' => 'user',
+                'message_body' => $request->message,
+                'message_type' => 'text',
+            ]);
 
-        return response()->json($message->load('sender'));
+            $chatSession->update(['last_message_at' => now()]);
+
+            return response()->json($message->load('sender'));
+        }
+
+        return response()->json(['error' => $result['message'] ?? 'Failed to send message'], 500);
     }
 }

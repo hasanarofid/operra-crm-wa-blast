@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use Illuminate\Http\Request;
 use Inertia\Middleware;
+use App\Models\ChatMessage;
 
 class HandleInertiaRequests extends Middleware
 {
@@ -40,6 +41,9 @@ class HandleInertiaRequests extends Middleware
                     'permissions' => $request->user()->getAllPermissions()->pluck('name'),
                 ] : null,
             ],
+            'unreadCount' => $request->user() ? ChatMessage::whereHas('chatSession', function($query) use ($request) {
+                $query->where('assigned_user_id', $request->user()->id);
+            })->where('sender_type', 'customer')->whereNull('read_at')->count() : 0,
         ];
     }
 }

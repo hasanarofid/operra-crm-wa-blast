@@ -21,7 +21,7 @@ class ChatMessage extends Model
         'read_at' => 'datetime',
     ];
 
-    public function session(): BelongsTo
+    public function chatSession(): BelongsTo
     {
         return $this->belongsTo(ChatSession::class, 'chat_session_id');
     }

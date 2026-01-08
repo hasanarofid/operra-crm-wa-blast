@@ -14,6 +14,7 @@ use App\Http\Controllers\ERP\StockMovementController;
 use App\Http\Controllers\ERP\SettingController;
 use App\Http\Controllers\WhatsAppConfigController;
 use App\Http\Controllers\CRMChatController;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -25,6 +26,12 @@ Route::get('/', function () {
     ]);
 });
 
+Route::get('/link-storage', function () {
+    Artisan::call('storage:link');
+    return "Storage Link Created";
+});
+
+
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
     
@@ -35,6 +42,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // CRM Master Data
     Route::prefix('master')->name('master.')->group(function () {
         Route::resource('customers', CustomerController::class);
+        Route::patch('customers/{customer}/status', [CustomerController::class, 'updateStatus'])->name('customers.update-status');
     });
 
     // CRM Chat (Shared Inbox)
@@ -50,6 +58,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::middleware(['role:super-admin'])->group(function () {
         Route::get('/whatsapp-settings', [WhatsAppConfigController::class, 'index'])->name('whatsapp.settings.index');
         Route::post('/whatsapp-settings', [WhatsAppConfigController::class, 'update'])->name('whatsapp.settings.update');
+        Route::post('/whatsapp-accounts', [WhatsAppConfigController::class, 'storeAccount'])->name('whatsapp.accounts.store');
+        Route::post('/whatsapp-accounts/{whatsappAccount}/sync', [WhatsAppConfigController::class, 'syncAccount'])->name('whatsapp.accounts.sync');
     });
 });
 

@@ -1,27 +1,85 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { Head } from '@inertiajs/vue3';
+import { Head, usePage } from '@inertiajs/vue3';
 import { ref, onMounted, nextTick } from 'vue';
 import axios from 'axios';
+import { database } from '@/firebase';
+import { ref as dbRef, onValue, off } from "firebase/database";
+
+const { props: pageProps } = usePage();
 
 const props = defineProps({
     sessions: Array,
     whatsappAccounts: Array,
 });
 
+const sessionsList = ref([...props.sessions]);
 const selectedSession = ref(null);
 const messages = ref([]);
 const newMessage = ref('');
 const messageContainer = ref(null);
 const isLoading = ref(false);
 
+onMounted(() => {
+    // 1. Listen ke Firebase Realtime Database
+    const userInboxRef = dbRef(database, `inbox/users/${pageProps.auth.user.id}`);
+    
+    onValue(userInboxRef, (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+            // Firebase mengembalikan objek, kita butuh data terbaru
+            // Karena kita nge-set data dengan key = session_id di backend
+            Object.values(data).forEach((incoming) => {
+                const { session, message } = incoming;
+
+                // Update daftar session (pindahkan ke paling atas)
+                const index = sessionsList.value.findIndex(s => s.id === session.id);
+                
+                // Tambahkan flag unread jika pesan dari customer dan bukan session yang sedang dibuka
+                const isUnread = message.sender_type === 'customer' && (!selectedSession.value || selectedSession.value.id !== session.id);
+                const updatedSession = { ...session, is_unread: isUnread || (index !== -1 && sessionsList.value[index].is_unread) };
+
+                if (index !== -1) {
+                    sessionsList.value.splice(index, 1);
+                }
+                sessionsList.value.unshift(updatedSession);
+
+                // Jika sedang membuka session tersebut, tambah pesan secara real-time
+                if (selectedSession.value && selectedSession.value.id === session.id) {
+                    // Cek agar tidak duplikat (karena Firebase onValue trigger tiap ada perubahan)
+                    const isMessageExist = messages.value.some(m => m.id === message.id);
+                    if (!isMessageExist) {
+                        messages.value.push(message);
+                        scrollToBottom();
+                    }
+                }
+            });
+        }
+    });
+
+    // Backup: Tetap biarkan Laravel Echo jika masih ingin digunakan
+    if (window.Echo) {
+        // ... (Echo logic if needed)
+    }
+});
+
 const selectSession = async (session) => {
     selectedSession.value = session;
+    
+    // Reset unread status secara lokal
+    const sessionInList = sessionsList.value.find(s => s.id === session.id);
+    if (sessionInList) {
+        sessionInList.is_unread = false;
+    }
+
     isLoading.value = true;
     try {
         const response = await axios.get(route('crm.chat.show', session.id));
         messages.value = response.data.messages;
         scrollToBottom();
+        
+        // Opsional: Beritahu backend untuk mark as read (bisa ditambahkan nanti)
+        // await axios.post(route('crm.chat.read', session.id));
     } catch (error) {
         console.error('Failed to load messages', error);
     } finally {
@@ -58,6 +116,27 @@ const scrollToBottom = () => {
 const formatTime = (date) => {
     return new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
+
+const updateCustomerStatus = async (newStatus) => {
+    if (!selectedSession.value) return;
+    
+    try {
+        await axios.patch(route('master.customers.update-status', selectedSession.value.customer_id), {
+            status: newStatus
+        });
+        selectedSession.value.customer.status = newStatus;
+        
+        // Update status di sessionsList juga
+        const session = sessionsList.value.find(s => s.id === selectedSession.value.id);
+        if (session) {
+            session.customer.status = newStatus;
+        }
+        
+    } catch (error) {
+        console.error('Gagal update status', error);
+        alert('Gagal memperbarui status customer');
+    }
+};
 </script>
 
 <template>
@@ -72,7 +151,7 @@ const formatTime = (date) => {
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div class="bg-white/10 backdrop-blur-md rounded-lg p-4 border border-white/20 text-white">
                     <div class="text-xs uppercase font-bold opacity-70">Total Conversations</div>
-                    <div class="text-2xl font-bold">{{ sessions.length }}</div>
+                    <div class="text-2xl font-bold">{{ sessionsList.length }}</div>
                 </div>
                 <div class="bg-white/10 backdrop-blur-md rounded-lg p-4 border border-white/20 text-white">
                     <div class="text-xs uppercase font-bold opacity-70">Active Channels</div>
@@ -88,18 +167,23 @@ const formatTime = (date) => {
         <div class="flex h-[calc(100vh-280px)] bg-white dark:bg-gray-800 rounded-xl shadow-2xl overflow-hidden border border-gray-200 dark:border-gray-700">
             <!-- Sidebar: Session List -->
             <div class="w-80 md:w-96 border-r border-gray-200 dark:border-gray-700 flex flex-col bg-gray-50/50 dark:bg-gray-800/50">
-                <div class="p-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+                <div class="p-4 bg-white dark:bg-gray-800 shadow-sm z-20">
                     <div class="relative">
-                        <input type="text" placeholder="Search chats..." class="w-full pl-9 pr-4 py-2 bg-gray-100 dark:bg-gray-700 border-none rounded-lg text-sm focus:ring-2 focus:ring-operra-500 dark:text-white">
-                        <svg class="w-4 h-4 absolute left-3 top-2.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                        <input type="text" placeholder="Search chats..." class="w-full pl-9 pr-4 py-2.5 bg-gray-100 dark:bg-gray-700 border-none rounded-xl text-sm focus:ring-2 focus:ring-operra-500 dark:text-white transition-all">
+                        <svg class="w-4 h-4 absolute left-3.5 top-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
                     </div>
                 </div>
-                <div class="flex-1 overflow-y-auto">
-                    <div v-for="session in sessions" :key="session.id" 
+                <div class="flex-1 overflow-y-auto custom-scrollbar pt-2">
+                    <div v-for="session in sessionsList" :key="session.id" 
                         @click="selectSession(session)"
-                        :class="['group p-4 cursor-pointer hover:bg-white dark:hover:bg-gray-700 transition-all border-b border-gray-100 dark:border-gray-700 relative', 
-                                selectedSession?.id === session.id ? 'bg-white dark:bg-gray-700 shadow-sm z-10' : '']">
-                        <div v-if="selectedSession?.id === session.id" class="absolute left-0 top-0 bottom-0 w-1 bg-operra-500"></div>
+                        :class="['group p-4 cursor-pointer transition-all duration-200 border-b border-gray-100/50 dark:border-gray-700/50 relative mb-1 mx-2 rounded-xl', 
+                                selectedSession?.id === session.id 
+                                ? 'bg-white dark:bg-gray-700 shadow-md scale-[1.02] z-10' 
+                                : 'hover:bg-white dark:hover:bg-gray-700 hover:shadow-sm hover:scale-[1.01] bg-gray-50/50 dark:bg-gray-800/20']">
+                        
+                        <!-- Active Indicator -->
+                        <div v-if="selectedSession?.id === session.id" class="absolute left-0 top-3 bottom-3 w-1.5 bg-operra-600 rounded-r-full shadow-[2px_0_8px_rgba(var(--color-operra-600),0.4)]"></div>
+                        
                         <div class="flex gap-3">
                             <div class="relative">
                                 <div class="h-12 w-12 rounded-full bg-operra-100 dark:bg-operra-900/30 flex items-center justify-center text-operra-600 dark:text-operra-400 font-bold text-lg">
@@ -109,10 +193,23 @@ const formatTime = (date) => {
                             </div>
                             <div class="flex-1 min-w-0">
                                 <div class="flex justify-between items-center mb-1">
-                                    <h4 class="font-bold text-sm text-gray-800 dark:text-gray-100 truncate">{{ session.customer.name }}</h4>
-                                    <span class="text-[10px] text-gray-400 font-medium">{{ formatTime(session.last_message_at) }}</span>
+                                    <h4 :class="['font-bold text-sm truncate', session.is_unread ? 'text-operra-600 dark:text-operra-400' : 'text-gray-800 dark:text-gray-100']">
+                                        {{ session.customer.name }}
+                                    </h4>
+                                    <div class="flex items-center gap-2">
+                                        <span :class="[
+                                            'text-[8px] px-1.5 py-0.5 rounded-full font-bold uppercase',
+                                            session.customer.status === 'customer' ? 'bg-green-100 text-green-600' : 
+                                            session.customer.status === 'prospect' ? 'bg-blue-100 text-blue-600' : 
+                                            session.customer.status === 'lost' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600'
+                                        ]">
+                                            {{ session.customer.status }}
+                                        </span>
+                                        <div v-if="session.is_unread" class="h-2 w-2 bg-red-500 rounded-full animate-pulse"></div>
+                                        <span class="text-[10px] text-gray-400 font-medium">{{ formatTime(session.last_message_at) }}</span>
+                                    </div>
                                 </div>
-                                <p class="text-xs text-gray-500 dark:text-gray-400 truncate flex items-center gap-1">
+                                <p :class="['text-xs truncate flex items-center gap-1', session.is_unread ? 'text-gray-900 dark:text-gray-100 font-semibold' : 'text-gray-500 dark:text-gray-400']">
                                     <svg class="w-3 h-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z"></path></svg>
                                     {{ session.customer.phone }}
                                 </p>
@@ -135,7 +232,19 @@ const formatTime = (date) => {
                                 {{ selectedSession.customer.name.charAt(0) }}
                             </div>
                             <div>
-                                <div class="font-bold text-gray-800 dark:text-gray-200">{{ selectedSession.customer.name }}</div>
+                                <div class="flex items-center gap-2">
+                                    <div class="font-bold text-gray-800 dark:text-gray-200">{{ selectedSession.customer.name }}</div>
+                                    <select 
+                                        v-model="selectedSession.customer.status" 
+                                        @change="updateCustomerStatus($event.target.value)"
+                                        class="text-[10px] uppercase font-bold px-2 py-0 h-5 rounded border-none bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 focus:ring-1 focus:ring-operra-500 cursor-pointer"
+                                    >
+                                        <option value="lead">Lead</option>
+                                        <option value="prospect">Prospect</option>
+                                        <option value="customer">Customer</option>
+                                        <option value="lost">Lost</option>
+                                    </select>
+                                </div>
                                 <div class="flex items-center gap-2">
                                     <span class="h-2 w-2 bg-green-500 rounded-full"></span>
                                     <span class="text-[10px] text-gray-500 font-medium uppercase tracking-wider">Active on {{ selectedSession.whatsapp_account.name }}</span>

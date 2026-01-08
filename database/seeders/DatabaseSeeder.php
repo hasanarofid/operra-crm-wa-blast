@@ -202,5 +202,8 @@ class DatabaseSeeder extends Seeder
             'message_body' => 'Halo! Tentu, untuk MacBook Pro M3 stoknya ready kak.',
             'created_at' => now()->subMinutes(5)
         ]);
+
+        // 10. Multi Account Test Data
+        $this->call(MultiAccountTestSeeder::class);
     }
 }

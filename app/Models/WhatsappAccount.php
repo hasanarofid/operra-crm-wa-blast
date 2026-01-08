@@ -30,4 +30,21 @@ class WhatsappAccount extends Model
     {
         return $this->hasMany(ChatSession::class);
     }
+
+    /**
+     * Mencari agent berikutnya berdasarkan logika Round Robin
+     */
+    public function assignNextAgent()
+    {
+        // Cari agent yang:
+        // 1. Terhubung dengan akun WA ini
+        // 2. Sedang Online/Available (is_available = true)
+        // 3. Urutkan berdasarkan yang paling lama tidak menerima chat (last_assigned_at)
+        // Menggunakan MySQL compatible NULLS FIRST
+        return $this->agents()
+            ->where('is_available', true)
+            ->orderByRaw('last_assigned_at IS NULL DESC')
+            ->orderBy('last_assigned_at', 'ASC')
+            ->first();
+    }
 }

@@ -32,4 +32,18 @@ class CustomerController extends Controller
 
         return redirect()->route('master.customers.index')->with('message', 'Customer created.');
     }
+
+    public function updateStatus(Request $request, Customer $customer)
+    {
+        $validated = $request->validate([
+            'status' => 'required|in:lead,prospect,customer,lost',
+        ]);
+
+        $customer->update(['status' => $validated['status']]);
+
+        return response()->json([
+            'message' => 'Status customer berhasil diperbarui',
+            'customer' => $customer
+        ]);
+    }
 }

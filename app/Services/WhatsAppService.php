@@ -33,11 +33,17 @@ class WhatsAppService
      *
      * @param string $to Nomor tujuan (format: 628xxx)
      * @param string $message Isi pesan
+     * @param \App\Models\WhatsappAccount|null $account Akun WhatsApp yang digunakan
      * @return array
      */
-    public function sendMessage($to, $message)
+    public function sendMessage($to, $message, $account = null)
     {
-        if (!$this->token || !$this->key) {
+        $token = $account ? ($account->api_credentials['token'] ?? $this->token) : $this->token;
+        $key = $account ? ($account->api_credentials['key'] ?? $this->key) : $this->key;
+        $sender = $account ? ($account->phone_number ?? $this->sender) : $this->sender;
+        $baseUrl = $account ? ($account->api_credentials['endpoint'] ?? $this->baseUrl) : $this->baseUrl;
+
+        if (!$token || !$key) {
             return [
                 'status' => false,
                 'message' => 'WhatsApp API configuration missing.'
@@ -46,10 +52,10 @@ class WhatsAppService
 
         try {
             $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->token,
-                'X-API-KEY' => $this->key,
-            ])->post($this->baseUrl . '/messages', [
-                'sender' => $this->sender,
+                'Authorization' => 'Bearer ' . $token,
+                'X-API-KEY' => $key,
+            ])->post($baseUrl . '/messages', [
+                'sender' => $sender,
                 'to' => $to,
                 'message' => $message,
             ]);
@@ -72,6 +78,52 @@ class WhatsAppService
                 'status' => false,
                 'message' => $e->getMessage()
             ];
+        }
+    }
+
+    /**
+     * Sinkronisasi status akun (Centang Hijau & Koneksi)
+     * 
+     * @param \App\Models\WhatsappAccount $account
+     * @return bool
+     */
+    public function syncAccountStatus($account)
+    {
+        $token = $account->api_credentials['token'] ?? $this->token;
+        $key = $account->api_credentials['key'] ?? $this->key;
+        $baseUrl = $account->api_credentials['endpoint'] ?? $this->baseUrl;
+
+        if (!$token || !$key) {
+            return false;
+        }
+
+        try {
+            // Simulasi pemanggilan API Vendor (Endpoint ini bervariasi tergantung vendor)
+            // Misalnya: GET /account-info atau GET /device/info
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $token,
+                'X-API-KEY' => $key,
+            ])->get($baseUrl . '/account-info');
+
+            if ($response->successful()) {
+                $data = $response->json();
+
+                // Update data di database berdasarkan respon API vendor
+                $account->update([
+                    // Field ini disesuaikan dengan respon vendor (misal: 'is_official', 'verified', dsb)
+                    'is_verified' => $data['is_official_account'] ?? $data['verified'] ?? false,
+                    'status' => 'active'
+                ]);
+
+                return $account->is_verified;
+            }
+
+            $account->update(['status' => 'disconnected']);
+            return false;
+
+        } catch (\Exception $e) {
+            Log::error('WhatsApp Sync Error: ' . $e->getMessage());
+            return false;
         }
     }
 
