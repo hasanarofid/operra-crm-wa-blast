@@ -16,24 +16,32 @@ use Kreait\Laravel\Firebase\Facades\Firebase;
 class WhatsAppWebhookController extends Controller
 {
     /**
-     * Handle incoming messages from WhatsApp Vendor (e.g., Fonnte/Wablas)
+     * Handle incoming messages from WhatsApp Vendor (e.g., Fonnte/Wablas/Official)
      */
     public function handle(Request $request)
     {
         // Log incoming for debugging
         Log::info('WhatsApp Webhook Received:', $request->all());
 
-        // 1. Identifikasi Akun WA
-        $deviceNumber = $request->input('device'); 
-        $senderNumber = $request->input('sender'); 
-        $messageBody = $request->input('message');
-
-        if (!$deviceNumber || !$senderNumber) {
-            return response()->json(['status' => 'error', 'message' => 'Invalid payload'], 400);
+        // Meta Cloud API Verification
+        if ($request->isMethod('GET') && $request->has('hub_verify_token')) {
+            return $this->verifyMetaWebhook($request);
         }
+
+        // 1. Identifikasi Akun WA & Format Pesan berdasarkan Provider
+        $payload = $this->parsePayload($request);
+        
+        if (!$payload) {
+            return response()->json(['status' => 'error', 'message' => 'Invalid payload or provider not supported'], 400);
+        }
+
+        $deviceNumber = $payload['device']; // Phone Number ID (Official) atau Device Number (Fonnte)
+        $senderNumber = $payload['sender']; 
+        $messageBody = $payload['message'];
 
         $whatsappAccount = WhatsappAccount::where('phone_number', $deviceNumber)->first();
         if (!$whatsappAccount) {
+            Log::warning("WhatsApp Account not found for device: " . $deviceNumber);
             return response()->json(['status' => 'error', 'message' => 'WhatsApp Account not found'], 404);
         }
 
@@ -68,7 +76,7 @@ class WhatsAppWebhookController extends Controller
                     ]);
                     
                     $agent->update(['last_assigned_at' => now()]);
-                    Log::info("Chat assigned to Agent: " . $agent->user->name);
+                    Log::info("Chat assigned to Agent: " . ($agent->user->name ?? 'Unknown'));
                 }
             }
 
@@ -100,6 +108,57 @@ class WhatsAppWebhookController extends Controller
     }
 
     /**
+     * Parse payload berdasarkan provider
+     */
+    private function parsePayload(Request $request)
+    {
+        // Deteksi Fonnte
+        if ($request->has('device') && $request->has('sender')) {
+            return [
+                'device' => $request->input('device'),
+                'sender' => $request->input('sender'),
+                'message' => $request->input('message'),
+            ];
+        }
+
+        // Deteksi Meta Cloud API (Official)
+        if ($request->has('object') && $request->input('object') === 'whatsapp_business_account') {
+            try {
+                $entry = $request->input('entry')[0];
+                $changes = $entry['changes'][0];
+                $value = $changes['value'];
+                
+                if (isset($value['messages'][0])) {
+                    $message = $value['messages'][0];
+                    return [
+                        'device' => $value['metadata']['phone_number_id'],
+                        'sender' => $message['from'],
+                        'message' => $message['text']['body'] ?? ($message['button']['text'] ?? 'Media/Other'),
+                    ];
+                }
+            } catch (\Exception $e) {
+                Log::error('Meta Payload Parse Error: ' . $e->getMessage());
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Verifikasi Webhook untuk Meta (Official API)
+     */
+    private function verifyMetaWebhook(Request $request)
+    {
+        $verifyToken = config('services.whatsapp.verify_token') ?? 'operra_secret_token';
+        
+        if ($request->input('hub_mode') === 'subscribe' && $request->input('hub_verify_token') === $verifyToken) {
+            return response($request->input('hub_challenge'), 200);
+        }
+
+        return response('Forbidden', 403);
+    }
+
+    /**
      * Push data ke Firebase Realtime Database
      */
     private function pushToFirebase($chatSession, $message)
@@ -107,10 +166,23 @@ class WhatsAppWebhookController extends Controller
         try {
             $database = Firebase::database();
             
+            // Hitung unread count untuk user ini
+            $unreadCount = ChatMessage::whereHas('chatSession', function($query) use ($chatSession) {
+                $query->where('assigned_user_id', $chatSession->assigned_user_id);
+            })->where('sender_type', 'customer')->whereNull('read_at')->count();
+
+            // Hitung unread count per session
+            $sessionUnreadCount = ChatMessage::where('chat_session_id', $chatSession->id)
+                ->where('sender_type', 'customer')
+                ->whereNull('read_at')
+                ->count();
+
             // Data untuk di-push
             $data = [
                 'session' => $chatSession->load(['customer', 'whatsappAccount']),
                 'message' => $message,
+                'unread_count' => $unreadCount,
+                'session_unread_count' => $sessionUnreadCount,
                 'timestamp' => now()->timestamp,
             ];
 
@@ -122,6 +194,10 @@ class WhatsAppWebhookController extends Controller
             if ($chatSession->assigned_user_id) {
                 $database->getReference('inbox/users/' . $chatSession->assigned_user_id . '/' . $chatSession->id)
                     ->set($data);
+                
+                // 3. Update unread count total untuk user tersebut secara realtime
+                $database->getReference('notifications/users/' . $chatSession->assigned_user_id)
+                    ->update(['unread_count' => $unreadCount]);
             }
 
             Log::info('Firebase Push Success for Session: ' . $chatSession->id);

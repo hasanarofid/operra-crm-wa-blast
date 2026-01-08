@@ -8,6 +8,7 @@ use App\Models\WhatsappAccount;
 use App\Services\WhatsAppService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
+use Kreait\Laravel\Firebase\Facades\Firebase;
 
 class CRMChatController extends Controller
 {
@@ -41,16 +42,16 @@ class CRMChatController extends Controller
     {
         $user = $request->user();
 
-        // Security check
-        if ($user->hasRole('sales') && $chatSession->assigned_user_id !== $user->id) {
-            abort(403, 'Unauthorized access to this chat.');
+        // Security check: Sales hanya bisa melihat chat miliknya, 
+        // KECUALI jika dia juga seorang super-admin atau manager.
+        if ($user->hasRole('sales') && !$user->hasRole('super-admin') && !$user->hasRole('manager')) {
+            if ($chatSession->assigned_user_id !== $user->id) {
+                abort(403, 'Unauthorized access to this chat.');
+            }
         }
 
-        // Mark messages as read
-        ChatMessage::where('chat_session_id', $chatSession->id)
-            ->where('sender_type', 'customer')
-            ->whereNull('read_at')
-            ->update(['read_at' => now()]);
+        // Mark messages as read dan update Firebase
+        $this->markAsRead($chatSession, $request);
 
         $chatSession->load(['customer', 'assignedUser', 'whatsappAccount']);
         $messages = ChatMessage::where('chat_session_id', $chatSession->id)
@@ -64,6 +65,55 @@ class CRMChatController extends Controller
         ]);
     }
 
+    public function markAsRead(ChatSession $chatSession, Request $request)
+    {
+        $user = $request->user();
+
+        // Cari pesan tertua yang belum terbaca di session ini
+        $message = ChatMessage::where('chat_session_id', $chatSession->id)
+            ->where('sender_type', 'customer')
+            ->whereNull('read_at')
+            ->orderBy('created_at', 'asc')
+            ->first();
+
+        // Jika ada, tandai satu pesan tersebut sebagai terbaca
+        if ($message) {
+            $message->update(['read_at' => now()]);
+        }
+
+        // Hitung ulang sisa unread count total untuk user
+        $unreadCount = ChatMessage::whereHas('chatSession', function($query) use ($user) {
+            $query->where('assigned_user_id', $user->id);
+        })->where('sender_type', 'customer')->whereNull('read_at')->count();
+
+        // Hitung ulang unread count khusus untuk session ini
+        $sessionUnreadCount = ChatMessage::where('chat_session_id', $chatSession->id)
+            ->where('sender_type', 'customer')
+            ->whereNull('read_at')
+            ->count();
+
+        // Update Firebase Notifications
+        try {
+            $database = Firebase::database();
+            // Update total di navbar
+            $database->getReference('notifications/users/' . $user->id)
+                ->update(['unread_count' => $unreadCount]);
+            
+            // Juga update session spesifik di Firebase agar badge angka di sidebar berkurang
+            $database->getReference('inbox/users/' . $user->id . '/' . $chatSession->id)
+                ->update(['session_unread_count' => $sessionUnreadCount]);
+                
+        } catch (\Exception $e) {
+            \Log::error('Firebase Update Error (markAsRead): ' . $e->getMessage());
+        }
+
+        return response()->json([
+            'status' => 'success', 
+            'unread_count' => $unreadCount,
+            'session_unread_count' => $sessionUnreadCount
+        ]);
+    }
+
     public function sendMessage(Request $request, ChatSession $chatSession)
     {
         $request->validate([
@@ -74,7 +124,7 @@ class CRMChatController extends Controller
         $waService = new WhatsAppService();
         
         $result = $waService->sendMessage(
-            $chatSession->customer->phone_number,
+            $chatSession->customer->phone,
             $request->message,
             $account
         );

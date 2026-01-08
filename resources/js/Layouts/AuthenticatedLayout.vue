@@ -1,16 +1,74 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 import Dropdown from '@/Components/Dropdown.vue';
 import DropdownLink from '@/Components/DropdownLink.vue';
 import { Link, usePage } from '@inertiajs/vue3';
+import { database } from '@/firebase';
+import { ref as dbRef, onValue } from "firebase/database";
+
+// Global variable to persist across page navigations (Inertia re-mounts)
+let globalLastSoundPlayedMessageId = null;
+let globalAudio = null;
 
 const collapseShow = ref("hidden");
 const isDark = ref(true); // Default dark
+const realTimeUnreadCount = ref(null);
+const showPermissionPrompt = ref(false);
+let unsubInbox = null;
+let unsubNotif = null;
 
 const page = usePage();
+
+const playNotificationSound = () => {
+    if (!globalAudio) {
+        globalAudio = new Audio('/sound/sound.mp3');
+    }
+    console.log('[Operra] Memutar suara notifikasi...');
+    globalAudio.play().catch(e => {
+        console.warn('[Operra] Suara gagal diputar (biasanya karena belum ada interaksi user di halaman ini):', e);
+        showPermissionPrompt.value = true;
+    });
+};
+
 const hasRole = (role) => page.props.auth.user.roles.includes(role);
 const hasPermission = (permission) => page.props.auth.user.permissions.includes(permission);
+
+const requestPermissions = async () => {
+    // 1. Request Notification Permission
+    if ("Notification" in window) {
+        try {
+            const permission = await Notification.requestPermission();
+            console.log('[Operra] Notification permission:', permission);
+        } catch (e) {
+            console.error('[Operra] Error requesting notification permission:', e);
+        }
+    }
+
+    // 2. Unlock Audio
+    // Create audio if not exists
+    if (!globalAudio) {
+        globalAudio = new Audio('/sound/sound.mp3');
+    }
+    
+    // Play a very short sound to unlock audio context
+    globalAudio.muted = true; // Mute first to be safe
+    globalAudio.play().then(() => {
+        globalAudio.pause();
+        globalAudio.muted = false;
+        globalAudio.currentTime = 0;
+        console.log('[Operra] Audio system unlocked successfully');
+        showPermissionPrompt.value = false;
+        
+        // Optional: Save to session storage that user has dismissed/enabled for this session
+        sessionStorage.setItem('operra_audio_unlocked', 'true');
+    }).catch(e => {
+        console.error('[Operra] Gagal unlock audio:', e);
+        // Even if it fails, we close the prompt to not annoy the user, 
+        // it will reappear if playNotificationSound fails again later
+        showPermissionPrompt.value = false;
+    });
+};
 
 function toggleCollapseShow(classes) {
   collapseShow.value = classes;
@@ -28,6 +86,16 @@ function toggleTheme() {
 }
 
 onMounted(() => {
+    // Check if we should show prompt
+    const isAudioUnlocked = sessionStorage.getItem('operra_audio_unlocked');
+    
+    if (("Notification" in window && Notification.permission !== 'granted') || !isAudioUnlocked) {
+        // Delay slightly for better UX
+        setTimeout(() => {
+            showPermissionPrompt.value = true;
+        }, 1500);
+    }
+
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme === 'light') {
         isDark.value = false;
@@ -36,6 +104,45 @@ onMounted(() => {
         isDark.value = true;
         document.documentElement.classList.add('dark');
     }
+
+    // Global notification sound listener
+    if (page.props.auth.user) {
+        const userInboxRef = dbRef(database, `inbox/users/${page.props.auth.user.id}`);
+        unsubInbox = onValue(userInboxRef, (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                const incomingData = Object.values(data);
+                
+                // Temukan pesan terbaru dari customer untuk play sound
+                const latestCustomerMessage = incomingData
+                    .map(d => d.message)
+                    .filter(m => m.sender_type === 'customer')
+                    .sort((a, b) => b.id - a.id)[0];
+
+                if (latestCustomerMessage && latestCustomerMessage.id !== globalLastSoundPlayedMessageId) {
+                    // Hanya bunyikan suara jika bukan loading pertama kali (saat web pertama kali dibuka)
+                    if (globalLastSoundPlayedMessageId !== null) {
+                        playNotificationSound();
+                    }
+                    globalLastSoundPlayedMessageId = latestCustomerMessage.id;
+                }
+            }
+        });
+
+        // Global unread count listener
+        const userNotificationRef = dbRef(database, `notifications/users/${page.props.auth.user.id}`);
+        unsubNotif = onValue(userNotificationRef, (snapshot) => {
+            const data = snapshot.val();
+            if (data && typeof data.unread_count !== 'undefined') {
+                realTimeUnreadCount.value = data.unread_count;
+            }
+        });
+    }
+});
+
+onUnmounted(() => {
+    if (unsubInbox) unsubInbox();
+    if (unsubNotif) unsubNotif();
 });
 </script>
 
@@ -64,6 +171,20 @@ onMounted(() => {
         </Link>
         <!-- User Mobile -->
         <ul class="md:hidden items-center flex flex-wrap list-none gap-2">
+          <li class="inline-block relative">
+             <Link :href="route('crm.chat.index')" class="text-gray-500 hover:text-operra-500 block py-1 px-2 transition-colors relative">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
+                </svg>
+                <!-- Notification Badge Mobile -->
+                <span v-if="(realTimeUnreadCount ?? $page.props.unreadCount) > 0" class="absolute top-0 right-0 flex h-3.5 w-3.5">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-3.5 w-3.5 bg-red-500 text-[8px] items-center justify-center font-bold text-white">
+                        {{ realTimeUnreadCount ?? $page.props.unreadCount }}
+                    </span>
+                </span>
+             </Link>
+          </li>
           <li class="inline-block relative">
             <button @click="toggleTheme" class="text-gray-500 hover:text-operra-500 block py-1 px-2 transition-colors">
                 <svg v-if="isDark" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 18v1m9-9h1m-18 0H2m3.364-7.364l-.707-.707m12.728 12.728l-.707-.707M6.343 17.657l-.707.707M17.657 6.343l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
@@ -193,6 +314,41 @@ onMounted(() => {
 
     <!-- Main Content -->
     <div class="relative md:ml-64 bg-gray-100 dark:bg-gray-900 min-h-screen transition-colors duration-300">
+      
+      <!-- Notification & Sound Permission Prompt (Floating Banner) -->
+      <transition
+        enter-active-class="transform transition ease-out duration-300"
+        enter-from-class="translate-y-full opacity-0"
+        enter-to-class="translate-y-0 opacity-100"
+        leave-active-class="transition ease-in duration-200"
+        leave-from-class="translate-y-0 opacity-100"
+        leave-to-class="translate-y-full opacity-0"
+      >
+        <div v-if="showPermissionPrompt" class="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-[100] w-[90%] max-w-md">
+            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-operra-500/30 p-5 flex flex-col items-center text-center gap-4">
+                <div class="h-14 w-14 bg-operra-100 dark:bg-operra-900/30 rounded-full flex items-center justify-center text-operra-600 dark:text-operra-400">
+                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
+                    </svg>
+                </div>
+                <div>
+                    <h4 class="text-lg font-bold text-gray-800 dark:text-gray-100">Aktifkan Notifikasi & Suara</h4>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                        Izinkan sistem mengirim notifikasi dan suara agar Anda tidak melewatkan pesan dari customer.
+                    </p>
+                </div>
+                <div class="flex gap-3 w-full">
+                    <button @click="showPermissionPrompt = false" class="flex-1 py-2.5 rounded-xl text-sm font-semibold text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                        Nanti Saja
+                    </button>
+                    <button @click="requestPermissions" class="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-operra-600 hover:bg-operra-700 text-white shadow-lg shadow-operra-600/20 transition-all active:scale-95">
+                        Aktifkan Sekarang
+                    </button>
+                </div>
+            </div>
+        </div>
+      </transition>
+
       <!-- Top Navbar -->
       <nav class="absolute top-0 left-0 w-full z-10 bg-transparent md:flex-row md:flex-nowrap md:justify-start flex items-center p-4">
         <div class="w-full mx-auto items-center flex justify-between md:flex-nowrap flex-wrap md:px-10 px-4">
@@ -208,10 +364,10 @@ onMounted(() => {
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
                     </svg>
                     <!-- Notification Badge -->
-                    <span v-if="$page.props.unreadCount > 0" class="absolute -top-1 -right-1 flex h-4 w-4">
+                    <span v-if="(realTimeUnreadCount ?? $page.props.unreadCount) > 0" class="absolute -top-1 -right-1 flex h-4 w-4">
                         <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                         <span class="relative inline-flex rounded-full h-4 w-4 bg-red-500 text-[10px] items-center justify-center font-bold text-white">
-                            {{ $page.props.unreadCount }}
+                            {{ realTimeUnreadCount ?? $page.props.unreadCount }}
                         </span>
                     </span>
                 </Link>

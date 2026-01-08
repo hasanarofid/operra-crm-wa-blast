@@ -16,11 +16,12 @@ class WhatsAppConfigController extends Controller
             'wa_blast_number',
             'wa_blast_endpoint',
             'wa_blast_token',
-            'wa_blast_key'
+            'wa_blast_key',
+            'wa_blast_provider'
         ])->pluck('value', 'key');
 
         $waStatus = null;
-        if (isset($settings['wa_blast_token']) && isset($settings['wa_blast_key'])) {
+        if (isset($settings['wa_blast_token'])) {
             $waStatus = $waService->checkStatus();
         }
 
@@ -73,6 +74,7 @@ class WhatsAppConfigController extends Controller
             'wa_blast_endpoint' => 'nullable|url',
             'wa_blast_token' => 'nullable|string',
             'wa_blast_key' => 'nullable|string',
+            'wa_blast_provider' => 'nullable|string|in:generic,fonnte,official',
         ]);
 
         foreach ($validated as $key => $value) {

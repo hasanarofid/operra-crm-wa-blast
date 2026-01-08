@@ -19,23 +19,23 @@ class MultiAccountTestSeeder extends Seeder
         $salesRole = Role::firstOrCreate(['name' => 'sales']);
 
         // 1. Create 2 Different WhatsApp Accounts
-        $accountA = WhatsappAccount::updateOrCreate(['phone_number' => '6281111111111'], [
+        // Nomor disesuaikan dengan screenshot user untuk testing
+        $accountA = WhatsappAccount::updateOrCreate(['phone_number' => '62881026697527'], [
             'name' => 'WA Business Jakarta',
-            'provider' => 'third_party_api',
+            'provider' => 'fonnte', // Gunakan 'fonnte' atau 'official' bukan 'third_party_api'
             'api_credentials' => [
-                'token' => 'TOKEN_JKT_123',
-                'key' => 'KEY_JKT_456',
-                'endpoint' => 'https://api.wa-provider.com/v1'
+                'token' => 'TbC72oN43CMvkvoWDoBh', // User perlu isi ini
+                'endpoint' => 'https://api.fonnte.com/send'
             ],
             'status' => 'active',
         ]);
 
         $accountB = WhatsappAccount::updateOrCreate(['phone_number' => '6282222222222'], [
             'name' => 'WA Business Surabaya',
-            'provider' => 'third_party_api',
+            'provider' => 'generic',
             'api_credentials' => [
-                'token' => 'TOKEN_SBY_789',
-                'key' => 'KEY_SBY_012',
+                'token' => 'DUMMY_TOKEN',
+                'key' => 'DUMMY_KEY',
                 'endpoint' => 'https://api.wa-provider.com/v1'
             ],
             'status' => 'active',

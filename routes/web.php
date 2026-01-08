@@ -55,6 +55,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // CRM Chat (Shared Inbox)
     Route::get('/inbox', [CRMChatController::class, 'index'])->name('crm.chat.index');
     Route::get('/inbox/{chatSession}', [CRMChatController::class, 'show'])->name('crm.chat.show');
+    Route::post('/inbox/{chatSession}/mark-as-read', [CRMChatController::class, 'markAsRead'])->name('crm.chat.mark-as-read');
     Route::post('/inbox/{chatSession}/send', [CRMChatController::class, 'sendMessage'])->name('crm.chat.send');
 
     // Settings

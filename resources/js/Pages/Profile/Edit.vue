@@ -47,14 +47,14 @@ defineProps({
                     </div>
                 </div>
 
-                <div class="relative flex flex-col min-w-0 break-words bg-white dark:bg-gray-800 w-full mb-6 shadow-lg rounded border-l-4 border-red-500">
+                <!-- <div class="relative flex flex-col min-w-0 break-words bg-white dark:bg-gray-800 w-full mb-6 shadow-lg rounded border-l-4 border-red-500">
                     <div class="rounded-t mb-0 px-4 py-3 border-0">
                         <h3 class="font-bold text-base text-red-600">Danger Zone</h3>
                     </div>
                     <div class="p-4 sm:p-8 border-t border-gray-100 dark:border-gray-700">
                         <DeleteUserForm class="max-w-xl" />
                     </div>
-                </div>
+                </div> -->
             </div>
         </div>
     </AuthenticatedLayout>
