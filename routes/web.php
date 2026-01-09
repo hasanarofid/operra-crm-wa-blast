@@ -14,6 +14,7 @@ use App\Http\Controllers\ERP\StockMovementController;
 use App\Http\Controllers\ERP\SettingController;
 use App\Http\Controllers\WhatsAppConfigController;
 use App\Http\Controllers\CRMChatController;
+use App\Http\Controllers\StaffManagementController;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
@@ -67,7 +68,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/whatsapp-settings', [WhatsAppConfigController::class, 'index'])->name('whatsapp.settings.index');
         Route::post('/whatsapp-settings', [WhatsAppConfigController::class, 'update'])->name('whatsapp.settings.update');
         Route::post('/whatsapp-accounts', [WhatsAppConfigController::class, 'storeAccount'])->name('whatsapp.accounts.store');
+        Route::put('/whatsapp-accounts/{whatsappAccount}', [WhatsAppConfigController::class, 'updateAccount'])->name('whatsapp.accounts.update');
+        Route::delete('/whatsapp-accounts/{whatsappAccount}', [WhatsAppConfigController::class, 'destroyAccount'])->name('whatsapp.accounts.destroy');
         Route::post('/whatsapp-accounts/{whatsappAccount}/sync', [WhatsAppConfigController::class, 'syncAccount'])->name('whatsapp.accounts.sync');
+
+        // Staff Management
+        Route::get('/staff-management', [StaffManagementController::class, 'index'])->name('staff.index');
+        Route::post('/staff-management', [StaffManagementController::class, 'store'])->name('staff.store');
+        Route::put('/staff-management/{user}', [StaffManagementController::class, 'update'])->name('staff.update');
+        Route::delete('/staff-management/{user}', [StaffManagementController::class, 'destroy'])->name('staff.destroy');
     });
 });
 

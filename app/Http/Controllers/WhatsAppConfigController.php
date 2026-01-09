@@ -39,7 +39,7 @@ class WhatsAppConfigController extends Controller
             'phone_number' => 'required|string|unique:whatsapp_accounts,phone_number',
             'provider' => 'required|string',
             'token' => 'required|string',
-            'key' => 'required|string',
+            'key' => 'nullable|string',
             'endpoint' => 'nullable|url',
         ]);
 
@@ -49,7 +49,7 @@ class WhatsAppConfigController extends Controller
             'provider' => $validated['provider'],
             'api_credentials' => [
                 'token' => $validated['token'],
-                'key' => $validated['key'],
+                'key' => $validated['key'] ?? '',
                 'endpoint' => $validated['endpoint'] ?? 'https://api.wa-provider.com/v1',
             ],
             'status' => 'inactive',
@@ -59,6 +59,39 @@ class WhatsAppConfigController extends Controller
         $waService->syncAccountStatus($account);
 
         return redirect()->back()->with('message', 'WhatsApp Account added and synced successfully.');
+    }
+
+    public function updateAccount(Request $request, WhatsappAccount $whatsappAccount, WhatsAppService $waService)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string',
+            'phone_number' => 'required|string|unique:whatsapp_accounts,phone_number,' . $whatsappAccount->id,
+            'provider' => 'required|string',
+            'token' => 'required|string',
+            'key' => 'nullable|string',
+            'endpoint' => 'nullable|url',
+        ]);
+
+        $whatsappAccount->update([
+            'name' => $validated['name'],
+            'phone_number' => $validated['phone_number'],
+            'provider' => $validated['provider'],
+            'api_credentials' => [
+                'token' => $validated['token'],
+                'key' => $validated['key'] ?? '',
+                'endpoint' => $validated['endpoint'] ?? 'https://api.wa-provider.com/v1',
+            ],
+        ]);
+
+        $waService->syncAccountStatus($whatsappAccount);
+
+        return redirect()->back()->with('message', 'WhatsApp Account updated and synced successfully.');
+    }
+
+    public function destroyAccount(WhatsappAccount $whatsappAccount)
+    {
+        $whatsappAccount->delete();
+        return redirect()->back()->with('message', 'WhatsApp Account deleted successfully.');
     }
 
     public function syncAccount(WhatsappAccount $whatsappAccount, WhatsAppService $waService)

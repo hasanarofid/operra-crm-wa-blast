@@ -272,6 +272,13 @@ onUnmounted(() => {
                     Manage Leads
                 </Link>
             </li>
+            <li v-if="hasRole('super-admin')" class="items-center">
+                <Link :href="route('whatsapp.settings.index')" 
+                    class="text-xs uppercase py-2 font-bold block transition-colors duration-200"
+                    :class="route().current('whatsapp.settings.*') ? 'text-operra-500' : 'text-gray-700 dark:text-gray-300 hover:text-operra-500'">
+                    WA Multi-Account
+                </Link>
+            </li>
           </ul>
 
           <!-- Divider -->
@@ -292,11 +299,11 @@ onUnmounted(() => {
             </li>
             <li v-if="hasRole('super-admin')" class="items-center">
               <Link
-                :href="route('whatsapp.settings.index')"
+                :href="route('staff.index')"
                 class="text-xs uppercase py-2 font-bold block transition-colors duration-200"
-                :class="route().current('whatsapp.settings.*') ? 'text-operra-500' : 'text-gray-700 dark:text-gray-300 hover:text-operra-500'"
+                :class="route().current('staff.*') ? 'text-operra-500' : 'text-gray-700 dark:text-gray-300 hover:text-operra-500'"
               >
-                WhatsApp Config
+                Manage Staff
               </Link>
             </li>
             <li class="items-center">
