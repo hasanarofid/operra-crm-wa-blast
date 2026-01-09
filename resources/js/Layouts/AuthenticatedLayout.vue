@@ -24,9 +24,9 @@ const playNotificationSound = () => {
     if (!globalAudio) {
         globalAudio = new Audio('/sound/sound.mp3');
     }
-    console.log('[Operra] Memutar suara notifikasi...');
+    console.log('[PT. Tigasatu Cipta Solusi] Memutar suara notifikasi...');
     globalAudio.play().catch(e => {
-        console.warn('[Operra] Suara gagal diputar (biasanya karena belum ada interaksi user di halaman ini):', e);
+        console.warn('[PT. Tigasatu Cipta Solusi] Suara gagal diputar (biasanya karena belum ada interaksi user di halaman ini):', e);
         showPermissionPrompt.value = true;
     });
 };
@@ -39,9 +39,9 @@ const requestPermissions = async () => {
     if ("Notification" in window) {
         try {
             const permission = await Notification.requestPermission();
-            console.log('[Operra] Notification permission:', permission);
+            console.log('[PT. Tigasatu Cipta Solusi] Notification permission:', permission);
         } catch (e) {
-            console.error('[Operra] Error requesting notification permission:', e);
+            console.error('[PT. Tigasatu Cipta Solusi] Error requesting notification permission:', e);
         }
     }
 
@@ -57,13 +57,13 @@ const requestPermissions = async () => {
         globalAudio.pause();
         globalAudio.muted = false;
         globalAudio.currentTime = 0;
-        console.log('[Operra] Audio system unlocked successfully');
+        console.log('[PT. Tigasatu Cipta Solusi] Audio system unlocked successfully');
         showPermissionPrompt.value = false;
         
         // Optional: Save to session storage that user has dismissed/enabled for this session
-        sessionStorage.setItem('operra_audio_unlocked', 'true');
+        sessionStorage.setItem('tigasatu_audio_unlocked', 'true');
     }).catch(e => {
-        console.error('[Operra] Gagal unlock audio:', e);
+        console.error('[PT. Tigasatu Cipta Solusi] Gagal unlock audio:', e);
         // Even if it fails, we close the prompt to not annoy the user, 
         // it will reappear if playNotificationSound fails again later
         showPermissionPrompt.value = false;
@@ -87,7 +87,7 @@ function toggleTheme() {
 
 onMounted(() => {
     // Check if we should show prompt
-    const isAudioUnlocked = sessionStorage.getItem('operra_audio_unlocked');
+    const isAudioUnlocked = sessionStorage.getItem('tigasatu_audio_unlocked');
     
     if (("Notification" in window && Notification.permission !== 'granted') || !isAudioUnlocked) {
         // Delay slightly for better UX
@@ -166,7 +166,6 @@ onUnmounted(() => {
         >
           <div class="flex items-center gap-2">
             <ApplicationLogo class="h-8 w-auto" />
-            <span class="text-operra-600 dark:text-operra-400 font-black">OPERRA</span>
           </div>
         </Link>
         <!-- User Mobile -->
@@ -220,7 +219,6 @@ onUnmounted(() => {
                 >
                   <div class="flex items-center gap-2">
                     <ApplicationLogo class="h-6 w-auto" />
-                    <span>OPERRA</span>
                   </div>
                 </Link>
               </div>
@@ -424,7 +422,7 @@ onUnmounted(() => {
             <div class="flex flex-wrap items-center md:justify-between justify-center">
               <div class="w-full md:w-4/12 px-4">
                 <div class="text-sm text-gray-500 dark:text-gray-400 font-semibold py-1 text-center md:text-left">
-                  © 2026 Operra by <a href="https://hasanarofid.site" class="text-operra-500 hover:text-operra-700">hasanarofid</a>
+                  © 2026 <a href="https://31ciptasolusi.co.id/" class="text-operra-500 hover:text-operra-700">PT. Tigasatu Cipta Solusi</a>
                 </div>
               </div>
             </div>

@@ -4,10 +4,10 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
 
-        <title inertia>{{ config('app.name', 'Operra') }}</title>
+        <title inertia>{{ config('app.name', 'PT. Tigasatu Cipta Solusi') }}</title>
 
         <!-- Favicon -->
-        <link rel="icon" type="image/png" href="{{ asset('images/logo_operra.png') }}">
+        <link rel="icon" type="image/png" href="{{ asset('images/logotigasatu.jpg') }}">
 
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.bunny.net">

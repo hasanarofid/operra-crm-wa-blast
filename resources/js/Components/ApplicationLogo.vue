@@ -1,3 +1,3 @@
 <template>
-    <img src="/images/logo_operra.png" alt="Operra Logo" v-bind="$attrs" class="dark:brightness-110" />
+    <img src="/images/logotigasatu.jpg" alt="PT. Tigasatu Cipta Solusi" v-bind="$attrs" class="dark:brightness-110" />
 </template>

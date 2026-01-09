@@ -9,7 +9,7 @@ defineProps({
 </script>
 
 <template>
-    <Head title="Operra - Business Operations Control Panel" />
+    <Head title="PT. Tigasatu Cipta Solusi - Business Operations Control Panel" />
 
     <div class="text-gray-800 antialiased">
         <!-- Navbar -->
@@ -17,7 +17,6 @@ defineProps({
             <div class="container mx-auto flex items-center justify-between">
                 <Link :href="route('dashboard')" class="flex items-center gap-2 text-white">
                     <ApplicationLogo class="h-8 md:h-10 w-auto" />
-                    <span class="text-xl md:text-2xl font-black tracking-tighter uppercase">OPERRA</span>
                 </Link>
                 
                 <div class="flex items-center gap-4">
@@ -136,7 +135,7 @@ defineProps({
                                 <span class="text-indigo-600">Pertumbuhan UKM</span>
                             </h3>
                             <p class="mb-6 text-lg font-light leading-relaxed text-gray-600">
-                                Operra bukan sekadar dasbor, melainkan sistem saraf pusat bisnis Anda. Kami memahami kebutuhan SME untuk memiliki kontrol penuh tanpa kerumitan teknis.
+                                PT. Tigasatu Cipta Solusi bukan sekadar dasbor, melainkan sistem saraf pusat bisnis Anda. Kami memahami kebutuhan SME untuk memiliki kontrol penuh tanpa kerumitan teknis.
                             </p>
                             <p class="mb-8 text-lg font-light leading-relaxed text-gray-600">
                                 Dengan fitur analitik MRR dan monitoring biaya AI, Anda dapat merencanakan skalabilitas bisnis dengan data akurat di tangan.
@@ -154,7 +153,7 @@ defineProps({
                                     <div class="p-10">
                                         <h4 class="text-xl font-black uppercase tracking-tight mb-4 text-gray-900 text-center">Satu Panel, Semua Kendali</h4>
                                         <p class="text-md font-light text-gray-600 text-center leading-relaxed italic">
-                                            "Operra membantu kami memangkas waktu approval biaya hingga 70%. Transparansi stok kini bukan lagi masalah bagi tim gudang kami."
+                                            "PT. Tigasatu Cipta Solusi membantu kami memangkas waktu approval biaya hingga 70%. Transparansi stok kini bukan lagi masalah bagi tim gudang kami."
                                         </p>
                                     </div>
                                 </div>
@@ -176,7 +175,7 @@ defineProps({
                         <div class="w-full px-4 lg:w-8/12">
                             <h2 class="text-5xl font-black text-white uppercase tracking-tighter mb-6">Siap Optimalkan Bisnis Anda?</h2>
                             <p class="mb-12 text-xl leading-relaxed text-gray-400 font-light max-w-2xl mx-auto">
-                                Bergabunglah dengan puluhan startup yang telah menggunakan Operra untuk mengontrol operasional mereka secara cerdas.
+                                Bergabunglah dengan puluhan startup yang telah menggunakan PT. Tigasatu Cipta Solusi untuk mengontrol operasional mereka secara cerdas.
                             </p>
                             <div class="flex flex-wrap justify-center gap-6">
                                 <Link :href="route('register')" class="rounded-full bg-white px-10 py-5 font-bold text-gray-900 hover:bg-indigo-50 transition-all hover:-translate-y-1 shadow-2xl">
@@ -199,7 +198,6 @@ defineProps({
                     <div class="w-full md:w-4/12 px-4 mb-12 md:mb-0">
                         <div class="flex items-center gap-3 mb-6">
                             <ApplicationLogo class="h-10 w-auto" />
-                            <span class="text-2xl font-black tracking-tighter text-gray-900">OPERRA</span>
                         </div>
                         <p class="text-gray-500 leading-relaxed font-light">
                             Sistem kendali operasional cerdas untuk pertumbuhan tanpa batas. Dirancang khusus untuk SME dan Startup modern.
@@ -220,7 +218,7 @@ defineProps({
                                 <ul class="space-y-4">
                                     <li><Link class="text-gray-600 hover:text-indigo-600 font-medium transition-colors" :href="route('login')">Login</Link></li>
                                     <li><Link class="text-gray-600 hover:text-indigo-600 font-medium transition-colors" :href="route('register')">Register</Link></li>
-                                    <li><a class="text-gray-600 hover:text-indigo-600 font-medium transition-colors" href="https://hasanarofid.site" target="_blank">Contact</a></li>
+                                    <li><a class="text-gray-600 hover:text-indigo-600 font-medium transition-colors" href="https://31ciptasolusi.co.id/" target="_blank">Contact</a></li>
                                 </ul>
                             </div>
                         </div>
@@ -228,10 +226,10 @@ defineProps({
                 </div>
                 <div class="mt-20 pt-10 border-t border-gray-100 flex flex-wrap items-center justify-between">
                     <div class="text-sm text-gray-400 font-medium">
-                        © 2026 Operra System. All rights reserved.
+                        © 2026 PT. Tigasatu Cipta Solusi. All rights reserved.
                     </div>
                     <div class="text-sm text-gray-400 font-medium">
-                        Developed by <a href="https://hasanarofid.site" class="text-indigo-600 hover:text-indigo-800" target="_blank">hasanarofid</a>
+                        Powered by <a href="https://31ciptasolusi.co.id/" class="text-indigo-600 hover:text-indigo-800" target="_blank">PT. Tigasatu Cipta Solusi</a>
                     </div>
                 </div>
             </div>

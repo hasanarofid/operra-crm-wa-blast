@@ -15,7 +15,7 @@
 <body>
     <div class="header">
         <h1>INVOICE</h1>
-        <p>Operra Business System</p>
+        <p>PT. Tigasatu Cipta Solusi Business System</p>
     </div>
 
     <div class="invoice-details">
