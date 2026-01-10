@@ -29,10 +29,10 @@ defineProps({
                             <Link :href="route('login')" class="hidden md:block text-xs font-bold uppercase text-white hover:text-indigo-200 transition-colors">
                                 Log In
                             </Link>
-                            <Link v-if="canRegister" :href="route('register')" 
+                            <!-- <Link v-if="canRegister" :href="route('register')" 
                                 class="rounded-full bg-indigo-600 px-6 py-2 text-xs font-bold uppercase text-white shadow-xl transition-all hover:bg-indigo-700">
                                 Get Started
-                            </Link>
+                            </Link> -->
                         </template>
                     </template>
                 </div>
@@ -61,14 +61,14 @@ defineProps({
                                 <p class="mt-4 text-base md:text-xl text-gray-400 max-w-2xl mx-auto font-light leading-relaxed">
                                     Sistem internal cerdas untuk UKM dan startup. Kelola pesanan, stok barang, hingga aktivitas staf dalam satu dasbor kendali yang kuat dan terukur.
                                 </p>
-                                <div class="mt-12 flex flex-col md:flex-row justify-center items-center gap-4 md:gap-6">
+                                <!-- <div class="mt-12 flex flex-col md:flex-row justify-center items-center gap-4 md:gap-6">
                                     <Link :href="route('register')" class="w-full md:w-auto rounded-full bg-indigo-600 px-10 py-5 text-sm md:text-base font-bold text-white shadow-2xl transition-all hover:bg-indigo-700 hover:-translate-y-1 text-center">
                                         Mulai Sekarang
                                     </Link>
                                     <Link :href="route('login')" class="w-full md:w-auto rounded-full bg-white/5 backdrop-blur-md px-10 py-5 text-sm md:text-base font-bold text-white border border-white/10 transition-all hover:bg-white/10 hover:-translate-y-1 text-center">
                                         Demo Sistem
                                     </Link>
-                                </div>
+                                </div> -->
                             </div>
                         </div>
                     </div>
