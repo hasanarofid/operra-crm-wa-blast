@@ -43,11 +43,13 @@ const submit = () => {
                                 </div>
 
                                 <div class="mb-4">
-                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Customer</label>
-                                    <select v-model="form.customer_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-operra-500 focus:ring-operra-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" required>
-                                        <option value="">Select Customer</option>
-                                        <option v-for="cust in customers" :key="cust.id" :value="cust.id">{{ cust.name }}</option>
-                                    </select>
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Customer</label>
+                                    <Multiselect
+                                        v-model="form.customer_id"
+                                        :options="customers.map(c => ({ value: c.id, label: c.name }))"
+                                        placeholder="Select Customer"
+                                        searchable
+                                    />
                                 </div>
 
                                 <div class="mb-4">
@@ -62,11 +64,14 @@ const submit = () => {
                             </div>
 
                             <div class="mb-4">
-                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Status</label>
-                                <select v-model="form.status" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-operra-500 focus:ring-operra-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                                    <option value="draft">Draft</option>
-                                    <option value="confirmed">Confirmed (Auto Invoice)</option>
-                                </select>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Status</label>
+                                <Multiselect
+                                    v-model="form.status"
+                                    :options="[
+                                        { value: 'draft', label: 'Draft' },
+                                        { value: 'confirmed', label: 'Confirmed (Auto Invoice)' }
+                                    ]"
+                                />
                             </div>
 
                             <div class="mt-6 flex gap-4">

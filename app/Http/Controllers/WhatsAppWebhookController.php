@@ -149,7 +149,7 @@ class WhatsAppWebhookController extends Controller
      */
     private function verifyMetaWebhook(Request $request)
     {
-        $verifyToken = config('services.whatsapp.verify_token') ?? 'tigasatu_secret_token';
+        $verifyToken = \App\Models\Setting::where('key', 'meta_webhook_verify_token')->value('value') ?? 'tigasatu_secret_token';
         
         if ($request->input('hub_mode') === 'subscribe' && $request->input('hub_verify_token') === $verifyToken) {
             return response($request->input('hub_challenge'), 200);

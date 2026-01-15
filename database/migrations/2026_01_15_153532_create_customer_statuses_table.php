@@ -1,0 +1,27 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('customer_statuses', function (Blueprint $table) {
+            $table->id();
+            $table->string('name')->unique(); // lead, prospect, etc.
+            $table->string('color')->default('#cbd5e1'); // hex color for UI
+            $table->integer('order')->default(0); // for sorting
+            $table->timestamps();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('customer_statuses');
+    }
+};

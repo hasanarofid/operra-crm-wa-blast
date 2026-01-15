@@ -17,22 +17,15 @@ class WhatsAppService
     public function __construct()
     {
         $settings = Setting::whereIn('key', [
-            'wa_blast_token',
-            'wa_blast_key',
-            'wa_blast_number',
-            'wa_blast_endpoint',
-            'wa_blast_provider'
+            'meta_access_token',
+            'meta_webhook_verify_token',
+            'meta_app_id'
         ])->pluck('value', 'key');
 
-        $this->token = $settings['wa_blast_token'] ?? null;
-        $this->key = $settings['wa_blast_key'] ?? null;
-        $this->sender = $settings['wa_blast_number'] ?? null;
-        $this->baseUrl = $settings['wa_blast_endpoint'] ?? 'https://api.wa-provider.com/v1';
-        $provider = $settings['wa_blast_provider'] ?? 'generic';
-        
-        // Backward compatibility
-        if ($provider === 'third_party_api') $provider = 'generic';
-        $this->provider = $provider;
+        $this->token = $settings['meta_access_token'] ?? null;
+        $this->sender = null; // Meta uses Phone Number ID per account
+        $this->baseUrl = 'https://graph.facebook.com/v18.0';
+        $this->provider = 'official';
     }
 
     /**
@@ -41,14 +34,16 @@ class WhatsAppService
      * @param string $to Nomor tujuan (format: 628xxx)
      * @param string $message Isi pesan
      * @param \App\Models\WhatsappAccount|null $account Akun WhatsApp yang digunakan
+     * @param string|null $template Nama template (untuk Official API)
+     * @param array $templateData Data template (untuk Official API)
      * @return array
      */
-    public function sendMessage($to, $message, $account = null)
+    public function sendMessage($to, $message, $account = null, $template = null, $templateData = [])
     {
-        $token = $account ? ($account->api_credentials['token'] ?? $this->token) : $this->token;
+        $token = $account ? ($account->api_credentials['token'] ?: $this->token) : $this->token;
         $key = $account ? ($account->api_credentials['key'] ?? $this->key) : $this->key;
         $sender = $account ? ($account->phone_number ?? $this->sender) : $this->sender;
-        $baseUrl = $account ? ($account->api_credentials['endpoint'] ?? $this->baseUrl) : $this->baseUrl;
+        $baseUrl = $account ? ($account->api_credentials['endpoint'] ?: $this->baseUrl) : $this->baseUrl;
         $provider = $account ? $account->provider : $this->provider;
 
         if ($provider === 'third_party_api') $provider = 'generic';
@@ -64,7 +59,7 @@ class WhatsAppService
             if ($provider === 'fonnte') {
                 return $this->sendFonnte($to, $message, $token, $baseUrl);
             } elseif ($provider === 'official') {
-                return $this->sendOfficial($to, $message, $token, $baseUrl, $sender);
+                return $this->sendOfficial($to, $message, $token, $baseUrl, $sender, $template, $templateData);
             }
 
             // Generic / Existing Logic
@@ -127,24 +122,35 @@ class WhatsAppService
     }
 
     /**
-     * Send message via Official WhatsApp (Cloud API)
-     */
-    protected function sendOfficial($to, $message, $token, $baseUrl, $senderId)
+    * Send message via Official WhatsApp (Cloud API)
+    */
+    protected function sendOfficial($to, $message, $token, $baseUrl, $senderId, $template = null, $templateData = [])
     {
         // Untuk Official, baseUrl biasanya https://graph.facebook.com/v18.0/{phone_number_id}/messages
-        // senderId disini diasumsikan sebagai phone_number_id
         $endpoint = $baseUrl ?: "https://graph.facebook.com/v18.0/{$senderId}/messages";
 
-        $response = Http::withToken($token)->post($endpoint, [
+        $payload = [
             'messaging_product' => 'whatsapp',
             'recipient_type' => 'individual',
             'to' => $to,
-            'type' => 'text',
-            'text' => [
+        ];
+
+        if ($template) {
+            $payload['type'] = 'template';
+            $payload['template'] = [
+                'name' => $template,
+                'language' => ['code' => 'id'], // Default to Indonesian
+                'components' => $templateData ?: [],
+            ];
+        } else {
+            $payload['type'] = 'text';
+            $payload['text'] = [
                 'preview_url' => false,
                 'body' => $message,
-            ],
-        ]);
+            ];
+        }
+
+        $response = Http::withToken($token)->post($endpoint, $payload);
 
         if ($response->successful()) {
             return [
@@ -167,9 +173,9 @@ class WhatsAppService
      */
     public function syncAccountStatus($account)
     {
-        $token = $account->api_credentials['token'] ?? $this->token;
+        $token = $account->api_credentials['token'] ?: $this->token;
         $key = $account->api_credentials['key'] ?? $this->key;
-        $baseUrl = $account->api_credentials['endpoint'] ?? $this->baseUrl;
+        $baseUrl = $account->api_credentials['endpoint'] ?: $this->baseUrl;
         $provider = $account->provider;
 
         if (!$token) {

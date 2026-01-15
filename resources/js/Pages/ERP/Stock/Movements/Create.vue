@@ -37,24 +37,24 @@ const submit = () => {
                     <div class="p-6 border-t border-gray-100 dark:border-gray-700">
                         <form @submit.prevent="submit" class="max-w-xl">
                             <div class="mb-4">
-                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Product</label>
-                                <select v-model="form.product_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-operra-500 focus:ring-operra-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" required>
-                                    <option value="">Select Product</option>
-                                    <option v-for="product in products" :key="product.id" :value="product.id">
-                                        {{ product.name }}
-                                    </option>
-                                </select>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Product</label>
+                                <Multiselect
+                                    v-model="form.product_id"
+                                    :options="products.map(p => ({ value: p.id, label: p.name }))"
+                                    placeholder="Select Product"
+                                    searchable
+                                />
                                 <div v-if="form.errors.product_id" class="text-red-500 text-xs mt-1">{{ form.errors.product_id }}</div>
                             </div>
 
                             <div class="mb-4">
-                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Warehouse</label>
-                                <select v-model="form.warehouse_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-operra-500 focus:ring-operra-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" required>
-                                    <option value="">Select Warehouse</option>
-                                    <option v-for="warehouse in warehouses" :key="warehouse.id" :value="warehouse.id">
-                                        {{ warehouse.name }}
-                                    </option>
-                                </select>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Warehouse</label>
+                                <Multiselect
+                                    v-model="form.warehouse_id"
+                                    :options="warehouses.map(w => ({ value: w.id, label: w.name }))"
+                                    placeholder="Select Warehouse"
+                                    searchable
+                                />
                                 <div v-if="form.errors.warehouse_id" class="text-red-500 text-xs mt-1">{{ form.errors.warehouse_id }}</div>
                             </div>
 

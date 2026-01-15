@@ -14,12 +14,45 @@ class WhatsappAccount extends Model
         'api_credentials',
         'is_verified',
         'status',
+        'trial_ends_at',
+        'is_trial',
+        'subscription_plan',
     ];
 
     protected $casts = [
         'api_credentials' => 'array',
         'is_verified' => 'boolean',
+        'is_trial' => 'boolean',
+        'trial_ends_at' => 'datetime',
     ];
+
+    /**
+     * Check if the account is in a valid trial or active subscription
+     */
+    public function isActive()
+    {
+        if ($this->status !== 'active') {
+            return false;
+        }
+
+        if ($this->is_trial) {
+            return $this->trial_ends_at && $this->trial_ends_at->isFuture();
+        }
+
+        return true; // If not trial, assume active if status is active (needs more complex logic for paid)
+    }
+
+    /**
+     * Get remaining trial days
+     */
+    public function getTrialDaysRemaining()
+    {
+        if (!$this->is_trial || !$this->trial_ends_at) {
+            return 0;
+        }
+
+        return now()->diffInDays($this->trial_ends_at, false);
+    }
 
     public function agents(): HasMany
     {

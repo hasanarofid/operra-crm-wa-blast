@@ -11,18 +11,50 @@ const { props: pageProps } = usePage();
 const props = defineProps({
     sessions: Array,
     whatsappAccounts: Array,
+    availableStatuses: Array,
 });
+
+import { watch } from 'vue';
 
 const sessionsList = ref(props.sessions.map(s => ({
     ...s,
     session_unread_count: s.unread_count || 0
 })));
+const searchQuery = ref('');
+const selectedStatus = ref('all');
 const selectedSession = ref(null);
+const filteredSessions = ref([]);
 const showSidebar = ref(true); // Control sidebar visibility on mobile
 const messages = ref([]);
 const newMessage = ref('');
 const messageContainer = ref(null);
 const isLoading = ref(false);
+
+const handleSearch = () => {
+    let filtered = sessionsList.value;
+
+    // Filter by Search Query (Name/Phone)
+    if (searchQuery.value.trim()) {
+        const query = searchQuery.value.toLowerCase();
+        filtered = filtered.filter(session => {
+            return session.customer.name.toLowerCase().includes(query) || 
+                   session.customer.phone.includes(query);
+        });
+    }
+
+    // Filter by Status
+    if (selectedStatus.value !== 'all') {
+        filtered = filtered.filter(session => {
+            return session.customer.status === selectedStatus.value;
+        });
+    }
+
+    filteredSessions.value = filtered;
+};
+
+watch(sessionsList, () => {
+    handleSearch();
+}, { deep: true });
 
 const resetSelection = () => {
     selectedSession.value = null;
@@ -30,6 +62,26 @@ const resetSelection = () => {
 };
 
 onMounted(() => {
+    // Initialize filtered list
+    filteredSessions.value = sessionsList.value;
+
+    // Auto-select session if customer_id is provided in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const customerId = urlParams.get('customer_id');
+    if (customerId) {
+        console.log('[Operra] Auto-selecting customer ID:', customerId);
+        // We use a small timeout to ensure everything is rendered
+        setTimeout(() => {
+            const session = sessionsList.value.find(s => s.customer_id == customerId);
+            if (session) {
+                console.log('[Operra] Session found, selecting...');
+                selectSession(session);
+            } else {
+                console.warn('[Operra] Session for customer ID not found in list:', customerId);
+            }
+        }, 500);
+    }
+    
     // 1. Listen ke Firebase Realtime Database
     const userInboxRef = dbRef(database, `inbox/users/${pageProps.auth.user.id}`);
     
@@ -188,14 +240,37 @@ const updateCustomerStatus = async (newStatus) => {
             <!-- Sidebar: Session List -->
             <div :class="['w-full md:w-80 lg:w-96 border-r border-gray-200 dark:border-gray-700 flex flex-col bg-gray-50/50 dark:bg-gray-800/50 transition-all duration-300', 
                           !showSidebar && 'hidden md:flex']">
-                <div class="p-4 bg-white dark:bg-gray-800 shadow-sm z-20">
+                <div class="p-4 bg-white dark:bg-gray-800 shadow-sm z-20 space-y-2">
                     <div class="relative">
-                        <input type="text" placeholder="Search chats..." class="w-full pl-9 pr-4 py-2.5 bg-gray-100 dark:bg-gray-700 border-none rounded-xl text-sm focus:ring-2 focus:ring-operra-500 dark:text-white transition-all">
+                        <input 
+                            v-model="searchQuery" 
+                            @input="handleSearch"
+                            type="text" 
+                            placeholder="Search name or phone..." 
+                            class="w-full pl-9 pr-4 py-2.5 bg-gray-100 dark:bg-gray-700 border-none rounded-xl text-sm focus:ring-2 focus:ring-operra-500 dark:text-white transition-all"
+                        >
                         <svg class="w-4 h-4 absolute left-3.5 top-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    </div>
+                    <div class="flex gap-2 overflow-x-auto custom-scrollbar pb-1">
+                        <button 
+                            @click="selectedStatus = 'all'; handleSearch()"
+                            :class="['px-3 py-1 rounded-full text-[10px] font-bold uppercase transition-all shrink-0', 
+                                    selectedStatus === 'all' ? 'bg-operra-600 text-white shadow-md' : 'bg-gray-100 dark:bg-gray-700 text-gray-500']"
+                        >
+                            All
+                        </button>
+                        <button 
+                            v-for="status in availableStatuses" :key="status.id"
+                            @click="selectedStatus = status.name; handleSearch()"
+                            :class="['px-3 py-1 rounded-full text-[10px] font-bold uppercase transition-all shrink-0', 
+                                    selectedStatus === status.name ? 'bg-operra-600 text-white shadow-md' : 'bg-gray-100 dark:bg-gray-700 text-gray-500']"
+                        >
+                            {{ status.name }}
+                        </button>
                     </div>
                 </div>
                 <div class="flex-1 overflow-y-auto custom-scrollbar pt-2">
-                    <div v-for="session in sessionsList" :key="session.id" 
+                    <div v-for="session in filteredSessions" :key="session.id" 
                         @click="selectSession(session)"
                         :class="['group p-4 cursor-pointer transition-all duration-200 border-b border-gray-100/50 dark:border-gray-700/50 relative mb-1 mx-2 rounded-xl', 
                                 selectedSession?.id === session.id 
@@ -232,11 +307,8 @@ const updateCustomerStatus = async (newStatus) => {
                                         {{ session.customer.phone }}
                                     </p>
                                     <span :class="[
-                                        'text-[8px] px-1.5 py-0.5 rounded-full font-bold uppercase shrink-0 ml-2',
-                                        session.customer.status === 'customer' ? 'bg-green-100 text-green-600' : 
-                                        session.customer.status === 'prospect' ? 'bg-blue-100 text-blue-600' : 
-                                        session.customer.status === 'lost' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600'
-                                    ]">
+                                        'text-[8px] px-1.5 py-0.5 rounded-full font-bold uppercase shrink-0 ml-2 shadow-sm text-white',
+                                    ]" :style="{ backgroundColor: availableStatuses.find(s => s.name === session.customer.status)?.color || '#94a3b8' }">
                                         {{ session.customer.status }}
                                     </span>
                                 </div>
@@ -272,10 +344,9 @@ const updateCustomerStatus = async (newStatus) => {
                                         @change="updateCustomerStatus($event.target.value)"
                                         class="text-[10px] uppercase font-bold px-1.5 py-0 h-5 rounded border-none bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 focus:ring-1 focus:ring-operra-500 cursor-pointer hidden sm:block"
                                     >
-                                        <option value="lead">Lead</option>
-                                        <option value="prospect">Prospect</option>
-                                        <option value="customer">Customer</option>
-                                        <option value="lost">Lost</option>
+                                        <option v-for="status in availableStatuses" :key="status.id" :value="status.name">
+                                            {{ status.name }}
+                                        </option>
                                     </select>
                                 </div>
                                 <div class="flex items-center gap-1.5">
@@ -290,10 +361,9 @@ const updateCustomerStatus = async (newStatus) => {
                                 @change="updateCustomerStatus($event.target.value)"
                                 class="text-[10px] uppercase font-bold px-1.5 py-0 h-6 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 focus:ring-1 focus:ring-operra-500 cursor-pointer sm:hidden"
                             >
-                                <option value="lead">Lead</option>
-                                <option value="prospect">Prospect</option>
-                                <option value="customer">Customer</option>
-                                <option value="lost">Lost</option>
+                                <option v-for="status in availableStatuses" :key="status.id" :value="status.name">
+                                    {{ status.name }}
+                                </option>
                             </select>
                             <button class="p-2 text-gray-400 hover:text-operra-500 transition-colors"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg></button>
                         </div>

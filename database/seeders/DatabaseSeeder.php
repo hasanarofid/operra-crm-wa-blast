@@ -21,6 +21,7 @@ use App\Models\WhatsappAccount;
 use App\Models\WhatsappAgent;
 use App\Models\ChatSession;
 use App\Models\ChatMessage;
+use App\Models\CustomerStatus;
 use Illuminate\Database\Seeder;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission;
@@ -30,6 +31,12 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
+        // 0. Customer Statuses Setup
+        $leadStatus = CustomerStatus::firstOrCreate(['name' => 'lead'], ['color' => '#94a3b8', 'order' => 1]);
+        $prospectStatus = CustomerStatus::firstOrCreate(['name' => 'prospect'], ['color' => '#3b82f6', 'order' => 2]);
+        $customerStatus = CustomerStatus::firstOrCreate(['name' => 'customer'], ['color' => '#22c55e', 'order' => 3]);
+        $lostStatus = CustomerStatus::firstOrCreate(['name' => 'lost'], ['color' => '#ef4444', 'order' => 4]);
+
         // 1. Roles & Permissions Setup
         $adminRole = Role::firstOrCreate(['name' => 'super-admin']);
         $managerRole = Role::firstOrCreate(['name' => 'manager']);
@@ -69,29 +76,32 @@ class DatabaseSeeder extends Seeder
         $staffRole->syncPermissions(['manage orders', 'manage inventory', 'manage sales']);
         $salesRole->syncPermissions(['view assigned chats', 'send messages', 'manage leads']);
 
-        // 2. Settings (Default)
+        // 2. Settings (Default & Meta)
         Setting::updateOrCreate(['key' => 'company_name'], ['value' => 'PT. Tigasatu Cipta Solusi']);
         Setting::updateOrCreate(['key' => 'company_address'], ['value' => 'Jl. Teknologi No. 1, Jakarta']);
         Setting::updateOrCreate(['key' => 'company_phone'], ['value' => '021-12345678']);
         Setting::updateOrCreate(['key' => 'company_email'], ['value' => 'info@31ciptasolusi.co.id']);
         Setting::updateOrCreate(['key' => 'currency'], ['value' => 'IDR']);
+        
+        // Meta Global Settings
+        Setting::updateOrCreate(['key' => 'meta_access_token'], ['value' => 'EAABw_DUMMY_TOKEN']);
+        Setting::updateOrCreate(['key' => 'meta_webhook_verify_token'], ['value' => 'tigasatu_secret']);
+        Setting::updateOrCreate(['key' => 'meta_app_id'], ['value' => '1234567890']);
 
         // 3. Warehouses
-        $mainWh = Warehouse::create(['name' => 'Gudang Utama', 'location' => 'Jakarta']);
-        $subWh = Warehouse::create(['name' => 'Gudang Cabang', 'location' => 'Bandung']);
+        $mainWh = Warehouse::updateOrCreate(['name' => 'Gudang Utama'], ['location' => 'Jakarta']);
+        $subWh = Warehouse::updateOrCreate(['name' => 'Gudang Cabang'], ['location' => 'Bandung']);
 
         // 4. Products
-        $p1 = Product::create([
+        $p1 = Product::updateOrCreate(['sku' => 'LAP-MBP-M3'], [
             'name' => 'MacBook Pro M3',
-            'sku' => 'LAP-MBP-M3',
             'description' => 'Laptop Apple terbaru',
             'purchase_price' => 22000000,
             'selling_price' => 28000000,
             'min_stock' => 5
         ]);
-        $p2 = Product::create([
+        $p2 = Product::updateOrCreate(['sku' => 'PHN-I15P'], [
             'name' => 'iPhone 15 Pro',
-            'sku' => 'PHN-I15P',
             'description' => 'Smartphone Apple terbaru',
             'purchase_price' => 18000000,
             'selling_price' => 21000000,
@@ -99,20 +109,26 @@ class DatabaseSeeder extends Seeder
         ]);
 
         // 5. Customers & Suppliers
-        $cust = Customer::create(['name' => 'Budi Santoso', 'email' => 'budi@gmail.com', 'phone' => '08123456789', 'address' => 'Surabaya']);
-        $supp = Supplier::create(['name' => 'Apple Distributor Indo', 'contact_person' => 'Andi', 'phone' => '021-88888', 'address' => 'Jakarta']);
+        $cust = Customer::updateOrCreate(['email' => 'budi@gmail.com'], [
+            'name' => 'Budi Santoso', 
+            'phone' => '08123456789', 
+            'address' => 'Surabaya'
+        ]);
+        $supp = Supplier::updateOrCreate(['name' => 'Apple Distributor Indo'], [
+            'contact_person' => 'Andi', 
+            'phone' => '021-88888', 
+            'address' => 'Jakarta'
+        ]);
 
         // 6. Sales Order & Invoice
-        $so = SalesOrder::create([
-            'so_number' => 'SO-20260106-001',
+        $so = SalesOrder::updateOrCreate(['so_number' => 'SO-20260106-001'], [
             'customer_id' => $cust->id,
             'order_date' => now(),
             'total_amount' => 28000000,
             'status' => 'confirmed'
         ]);
 
-        Invoice::create([
-            'invoice_number' => 'INV-20260106-001',
+        Invoice::updateOrCreate(['invoice_number' => 'INV-20260106-001'], [
             'sales_order_id' => $so->id,
             'due_date' => now()->addDays(7),
             'total_amount' => 28000000,
@@ -120,12 +136,13 @@ class DatabaseSeeder extends Seeder
         ]);
 
         // 7. Stock Movements
-        StockMovement::create([
+        StockMovement::updateOrCreate([
             'product_id' => $p1->id,
             'warehouse_id' => $mainWh->id,
+            'reference' => 'Initial Stock'
+        ], [
             'quantity' => 20,
             'type' => 'in',
-            'reference' => 'Initial Stock'
         ]);
 
         // 8. Legacy Data (Keeping for compatibility)
@@ -160,6 +177,9 @@ class DatabaseSeeder extends Seeder
             'provider' => 'official',
             'is_verified' => true, // Centang Hijau
             'status' => 'active',
+            'is_trial' => true,
+            'trial_ends_at' => now()->addMonths(3),
+            'subscription_plan' => 'trial_verified',
         ]);
 
         $salesUsers = User::role('sales')->get();
@@ -173,37 +193,42 @@ class DatabaseSeeder extends Seeder
         }
 
         // Example Lead/Chat
-        $lead = Customer::create([
+        $lead = Customer::updateOrCreate(['phone' => '628999888777'], [
             'name' => 'Calon Lead 1',
-            'phone' => '628999888777',
             'status' => 'lead',
             'lead_source' => 'whatsapp'
         ]);
 
-        $session = ChatSession::create([
+        $session = ChatSession::updateOrCreate([
             'whatsapp_account_id' => $waAccount->id,
             'customer_id' => $lead->id,
+        ], [
             'assigned_user_id' => $salesUsers->first()->id, // Assigned to Sales Ahmad
             'status' => 'open',
             'last_message_at' => now(),
         ]);
 
-        ChatMessage::create([
+        ChatMessage::updateOrCreate([
             'chat_session_id' => $session->id,
-            'sender_type' => 'customer',
             'message_body' => 'Halo, saya tertarik dengan produk MacBook Pro M3',
+        ], [
+            'sender_type' => 'customer',
             'created_at' => now()->subMinutes(10)
         ]);
 
-        ChatMessage::create([
+        ChatMessage::updateOrCreate([
             'chat_session_id' => $session->id,
+            'message_body' => 'Halo! Tentu, untuk MacBook Pro M3 stoknya ready kak.',
+        ], [
             'sender_id' => $salesUsers->first()->id,
             'sender_type' => 'user',
-            'message_body' => 'Halo! Tentu, untuk MacBook Pro M3 stoknya ready kak.',
             'created_at' => now()->subMinutes(5)
         ]);
 
         // 10. Multi Account Test Data
         $this->call(MultiAccountTestSeeder::class);
+        
+        // 11. Inbox Simulation Data (for Scrolling & Searching)
+        $this->call(InboxSimulationSeeder::class);
     }
 }

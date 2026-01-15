@@ -18,27 +18,33 @@ class MultiAccountTestSeeder extends Seeder
     {
         $salesRole = Role::firstOrCreate(['name' => 'sales']);
 
-        // 1. Create 2 Different WhatsApp Accounts
-        // Nomor disesuaikan dengan screenshot user untuk testing
+        // 1. Create Different WhatsApp Accounts for Simulation
+        // Account 1: Meta Official - Active Trial
         $accountA = WhatsappAccount::updateOrCreate(['phone_number' => '62881026697527'], [
-            'name' => 'WA Business Jakarta',
-            'provider' => 'fonnte', // Gunakan 'fonnte' atau 'official' bukan 'third_party_api'
+            'name' => 'WA Business Jakarta (Trial Aktif)',
+            'provider' => 'official',
             'api_credentials' => [
-                'token' => 'TbC72oN43CMvkvoWDoBh', // User perlu isi ini
-                'endpoint' => 'https://api.fonnte.com/send'
+                'token' => '', // Empty means use Global Token
             ],
             'status' => 'active',
+            'is_trial' => true,
+            'trial_ends_at' => now()->addMonths(2),
+            'subscription_plan' => 'trial_verified',
+            'is_verified' => true,
         ]);
 
+        // Account 2: Meta Official - Expired Trial (Untuk simulasi blokir)
         $accountB = WhatsappAccount::updateOrCreate(['phone_number' => '6282222222222'], [
-            'name' => 'WA Business Surabaya',
-            'provider' => 'generic',
+            'name' => 'WA Business Surabaya (Trial Habis)',
+            'provider' => 'official',
             'api_credentials' => [
-                'token' => 'DUMMY_TOKEN',
-                'key' => 'DUMMY_KEY',
-                'endpoint' => 'https://api.wa-provider.com/v1'
+                'token' => 'EXPIRED_TOKEN_OVERRIDE',
             ],
             'status' => 'active',
+            'is_trial' => true,
+            'trial_ends_at' => now()->subDays(5), // Sudah habis 5 hari lalu
+            'subscription_plan' => 'trial_verified',
+            'is_verified' => false,
         ]);
 
         // 2. Create 2 Sales Users

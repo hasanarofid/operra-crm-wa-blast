@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\ChatSession;
 use App\Models\ChatMessage;
 use App\Models\WhatsappAccount;
+use App\Models\CustomerStatus;
 use App\Services\WhatsAppService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -15,16 +16,55 @@ class CRMChatController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
+        $accountId = $this->getAccountIdForUser($user);
         
+        // 1. Jika user adalah sales, pastikan semua customer yang di-assign ke dia punya ChatSession
+        if ($user->hasRole('sales') && $accountId) {
+            $assignedCustomers = \App\Models\Customer::where('assigned_to', $user->id)->get();
+            
+            foreach ($assignedCustomers as $customer) {
+                ChatSession::firstOrCreate(
+                    ['customer_id' => $customer->id],
+                    [
+                        'whatsapp_account_id' => $accountId,
+                        'assigned_user_id' => $user->id,
+                        'status' => 'open',
+                        'last_message_at' => now(),
+                    ]
+                );
+            }
+        }
+
+        // Handle Auto-selection dari URL (untuk Admin/Manager atau jika sales belum punya session)
+        if ($request->has('customer_id')) {
+            $customerId = $request->customer_id;
+            $customer = \App\Models\Customer::find($customerId);
+            
+            if ($customer && ($user->hasRole('super-admin') || $user->hasRole('manager') || $customer->assigned_to == $user->id)) {
+                $session = ChatSession::where('customer_id', $customerId)->first();
+                if (!$session && $accountId) {
+                    ChatSession::create([
+                        'whatsapp_account_id' => $accountId,
+                        'customer_id' => $customerId,
+                        'assigned_user_id' => $user->id,
+                        'status' => 'open',
+                        'last_message_at' => now(),
+                    ]);
+                }
+            }
+        }
+
         $sessionsQuery = ChatSession::with(['customer', 'assignedUser', 'whatsappAccount'])
             ->withCount(['messages as unread_count' => function($query) {
                 $query->where('sender_type', 'customer')->whereNull('read_at');
             }])
             ->orderBy('last_message_at', 'desc');
 
-        // RBAC: Sales only see their assigned chats
+        // RBAC: Sales hanya melihat chat dari customer yang di-assign ke dia
         if ($user->hasRole('sales')) {
-            $sessionsQuery->where('assigned_user_id', $user->id);
+            $sessionsQuery->whereHas('customer', function($q) use ($user) {
+                $q->where('assigned_to', $user->id);
+            });
         }
 
         $sessions = $sessionsQuery->get()->map(function($session) {
@@ -35,7 +75,17 @@ class CRMChatController extends Controller
         return Inertia::render('CRM/Chat/Inbox', [
             'sessions' => $sessions,
             'whatsappAccounts' => WhatsappAccount::where('status', 'active')->get(),
+            'availableStatuses' => CustomerStatus::orderBy('order')->get(),
         ]);
+    }
+
+    /**
+     * Helper untuk mendapatkan account ID untuk user
+     */
+    private function getAccountIdForUser($user)
+    {
+        $agent = \App\Models\WhatsappAgent::where('user_id', $user->id)->first();
+        return $agent ? $agent->whatsapp_account_id : WhatsappAccount::where('status', 'active')->first()?->id;
     }
 
     public function show(ChatSession $chatSession, Request $request)
@@ -121,6 +171,13 @@ class CRMChatController extends Controller
         ]);
 
         $account = $chatSession->whatsappAccount;
+
+        if (!$account->isActive()) {
+            return response()->json([
+                'error' => 'Your WhatsApp account trial has expired or is inactive. Please upgrade your subscription.'
+            ], 403);
+        }
+
         $waService = new WhatsAppService();
         
         $result = $waService->sendMessage(

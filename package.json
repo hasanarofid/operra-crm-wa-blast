@@ -23,6 +23,8 @@
         "vue": "^3.4.0"
     },
     "dependencies": {
+        "@vueform/multiselect": "^2.6.11",
+        "@vueup/vue-quill": "^1.2.0",
         "apexcharts": "^5.3.6",
         "firebase": "^12.7.0",
         "vue3-apexcharts": "^1.10.0"

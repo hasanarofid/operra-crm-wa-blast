@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\CustomerStatusController;
+use App\Http\Controllers\WhatsAppBlastController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\OrderController;
@@ -63,17 +65,31 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/settings', [SettingController::class, 'index'])->name('settings.index');
     Route::post('/settings', [SettingController::class, 'update'])->name('settings.update');
 
-    // WhatsApp Settings (Admin only)
+    // WhatsApp & Staff Management (Admin only)
     Route::middleware(['role:super-admin'])->group(function () {
+        // WhatsApp Accounts & Marketing
         Route::get('/whatsapp-settings', [WhatsAppConfigController::class, 'index'])->name('whatsapp.settings.index');
         Route::post('/whatsapp-settings', [WhatsAppConfigController::class, 'update'])->name('whatsapp.settings.update');
         Route::post('/whatsapp-accounts', [WhatsAppConfigController::class, 'storeAccount'])->name('whatsapp.accounts.store');
+        Route::post('/whatsapp-accounts/sync-meta', [WhatsAppConfigController::class, 'syncFromMeta'])->name('whatsapp.accounts.sync-meta');
         Route::put('/whatsapp-accounts/{whatsappAccount}', [WhatsAppConfigController::class, 'updateAccount'])->name('whatsapp.accounts.update');
         Route::delete('/whatsapp-accounts/{whatsappAccount}', [WhatsAppConfigController::class, 'destroyAccount'])->name('whatsapp.accounts.destroy');
         Route::post('/whatsapp-accounts/{whatsappAccount}/sync', [WhatsAppConfigController::class, 'syncAccount'])->name('whatsapp.accounts.sync');
 
+        // WhatsApp Marketing (Blast)
+        Route::get('/whatsapp-blast', [WhatsAppBlastController::class, 'index'])->name('whatsapp.blast.index');
+        Route::post('/whatsapp-blast', [WhatsAppBlastController::class, 'store'])->name('whatsapp.blast.store');
+        Route::post('/whatsapp-blast/{campaign}/process', [WhatsAppBlastController::class, 'process'])->name('whatsapp.blast.process');
+
+        // Customer Statuses CRUD
+        Route::get('/customer-statuses', [CustomerStatusController::class, 'index'])->name('customer-statuses.index');
+        Route::post('/customer-statuses', [CustomerStatusController::class, 'store'])->name('customer-statuses.store');
+        Route::put('/customer-statuses/{customerStatus}', [CustomerStatusController::class, 'update'])->name('customer-statuses.update');
+        Route::delete('/customer-statuses/{customerStatus}', [CustomerStatusController::class, 'destroy'])->name('customer-statuses.destroy');
+
         // Staff Management
         Route::get('/staff-management', [StaffManagementController::class, 'index'])->name('staff.index');
+        // ... (remaining staff management routes)
         Route::post('/staff-management', [StaffManagementController::class, 'store'])->name('staff.store');
         Route::put('/staff-management/{user}', [StaffManagementController::class, 'update'])->name('staff.update');
         Route::delete('/staff-management/{user}', [StaffManagementController::class, 'destroy'])->name('staff.destroy');

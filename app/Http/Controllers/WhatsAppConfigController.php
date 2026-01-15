@@ -13,22 +13,26 @@ class WhatsAppConfigController extends Controller
     public function index(WhatsAppService $waService)
     {
         $settings = Setting::whereIn('key', [
-            'wa_blast_number',
-            'wa_blast_endpoint',
-            'wa_blast_token',
-            'wa_blast_key',
-            'wa_blast_provider'
+            'meta_access_token',
+            'meta_webhook_verify_token',
+            'meta_app_id',
+            'meta_waba_id',
         ])->pluck('value', 'key');
 
-        $waStatus = null;
-        if (isset($settings['wa_blast_token'])) {
-            $waStatus = $waService->checkStatus();
-        }
+        $waStatus = [
+            'provider' => 'official',
+            'connection' => 'ready'
+        ];
 
         return Inertia::render('Settings/WhatsApp', [
             'settings' => $settings,
             'waStatus' => $waStatus,
-            'accounts' => WhatsappAccount::all()
+            'accounts' => WhatsappAccount::all()->map(function($acc) {
+                return array_merge($acc->toArray(), [
+                    'trial_days_left' => $acc->getTrialDaysRemaining(),
+                    'is_active' => $acc->isActive()
+                ]);
+            })
         ]);
     }
 
@@ -38,7 +42,7 @@ class WhatsAppConfigController extends Controller
             'name' => 'required|string',
             'phone_number' => 'required|string|unique:whatsapp_accounts,phone_number',
             'provider' => 'required|string',
-            'token' => 'required|string',
+            'token' => 'nullable|string',
             'key' => 'nullable|string',
             'endpoint' => 'nullable|url',
         ]);
@@ -48,11 +52,14 @@ class WhatsAppConfigController extends Controller
             'phone_number' => $validated['phone_number'],
             'provider' => $validated['provider'],
             'api_credentials' => [
-                'token' => $validated['token'],
+                'token' => $validated['token'] ?? '', // Empty string means use global
                 'key' => $validated['key'] ?? '',
-                'endpoint' => $validated['endpoint'] ?? 'https://api.wa-provider.com/v1',
+                'endpoint' => $validated['endpoint'] ?? '',
             ],
             'status' => 'inactive',
+            'is_trial' => true,
+            'trial_ends_at' => now()->addMonths(3),
+            'subscription_plan' => 'trial_verified',
         ]);
 
         // Langsung sync status setelah input
@@ -67,7 +74,7 @@ class WhatsAppConfigController extends Controller
             'name' => 'required|string',
             'phone_number' => 'required|string|unique:whatsapp_accounts,phone_number,' . $whatsappAccount->id,
             'provider' => 'required|string',
-            'token' => 'required|string',
+            'token' => 'nullable|string',
             'key' => 'nullable|string',
             'endpoint' => 'nullable|url',
         ]);
@@ -77,9 +84,9 @@ class WhatsAppConfigController extends Controller
             'phone_number' => $validated['phone_number'],
             'provider' => $validated['provider'],
             'api_credentials' => [
-                'token' => $validated['token'],
+                'token' => $validated['token'] ?? '',
                 'key' => $validated['key'] ?? '',
-                'endpoint' => $validated['endpoint'] ?? 'https://api.wa-provider.com/v1',
+                'endpoint' => $validated['endpoint'] ?? '',
             ],
         ]);
 
@@ -100,20 +107,61 @@ class WhatsAppConfigController extends Controller
         return redirect()->back()->with('message', 'Account status synced.');
     }
 
+    public function syncFromMeta(WhatsAppService $waService)
+    {
+        $wabaId = Setting::where('key', 'meta_waba_id')->value('value');
+        $token = Setting::where('key', 'meta_access_token')->value('value');
+
+        if (!$wabaId || !$token) {
+            return redirect()->back()->withErrors(['message' => 'WABA ID and Global Token are required for sync.']);
+        }
+
+        try {
+            $response = \Illuminate\Support\Facades\Http::withToken($token)
+                ->get("https://graph.facebook.com/v18.0/{$wabaId}/phone_numbers");
+
+            if ($response->successful()) {
+                $numbers = $response->json()['data'] ?? [];
+                
+                foreach ($numbers as $num) {
+                    WhatsappAccount::updateOrCreate(
+                        ['phone_number' => $num['id']], // Phone Number ID
+                        [
+                            'name' => $num['display_phone_number'] . ' (' . ($num['verified_name'] ?? 'Official') . ')',
+                            'provider' => 'official',
+                            'status' => 'active',
+                            'is_verified' => ($num['code_verification_status'] === 'VERIFIED'),
+                            'api_credentials' => ['token' => '', 'key' => '', 'endpoint' => ''],
+                            'is_trial' => true,
+                            'trial_ends_at' => now()->addMonths(3),
+                            'subscription_plan' => 'trial_verified',
+                        ]
+                    );
+                }
+
+                return redirect()->back()->with('message', count($numbers) . ' accounts synced from Meta.');
+            }
+
+            return redirect()->back()->withErrors(['message' => 'Meta API Error: ' . $response->body()]);
+
+        } catch (\Exception $e) {
+            return redirect()->back()->withErrors(['message' => $e->getMessage()]);
+        }
+    }
+
     public function update(Request $request)
     {
         $validated = $request->validate([
-            'wa_blast_number' => 'nullable|string',
-            'wa_blast_endpoint' => 'nullable|url',
-            'wa_blast_token' => 'nullable|string',
-            'wa_blast_key' => 'nullable|string',
-            'wa_blast_provider' => 'nullable|string|in:generic,fonnte,official',
+            'meta_access_token' => 'nullable|string',
+            'meta_webhook_verify_token' => 'nullable|string',
+            'meta_app_id' => 'nullable|string',
+            'meta_waba_id' => 'nullable|string',
         ]);
 
         foreach ($validated as $key => $value) {
-            Setting::updateOrCreate(['key' => $key], ['value' => $value]);
+            Setting::updateOrCreate(['key' => $key], ['value' => $value ?? '']);
         }
 
-        return redirect()->back()->with('message', 'WhatsApp settings updated successfully.');
+        return redirect()->back()->with('message', 'Global Meta configuration updated successfully.');
     }
 }

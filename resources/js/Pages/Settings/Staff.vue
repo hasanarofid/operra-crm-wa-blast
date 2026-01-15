@@ -95,22 +95,23 @@ const resetForm = () => {
                                     <input v-model="form.password" type="password" class="mt-1 block w-full rounded-md border-gray-300 dark:bg-gray-700 dark:text-white" :required="!isEditing">
                                 </div>
                                 <div>
-                                    <label class="block text-sm font-medium">Role</label>
-                                    <select v-model="form.role" class="mt-1 block w-full rounded-md border-gray-300 dark:bg-gray-700 dark:text-white">
-                                        <option v-for="role in roles" :key="role.id" :value="role.name">
-                                            {{ role.name.toUpperCase() }}
-                                        </option>
-                                    </select>
+                                    <label class="block text-sm font-medium mb-1">Role</label>
+                                    <Multiselect
+                                        v-model="form.role"
+                                        :options="roles.map(r => ({ value: r.name, label: r.name.toUpperCase() }))"
+                                        placeholder="Select Role"
+                                        searchable
+                                    />
                                 </div>
                                 <div>
-                                    <label class="block text-sm font-medium">Linked WhatsApp Account (Optional)</label>
-                                    <select v-model="form.whatsapp_account_id" class="mt-1 block w-full rounded-md border-gray-300 dark:bg-gray-700 dark:text-white">
-                                        <option value="">None / Unlinked</option>
-                                        <option v-for="account in whatsappAccounts" :key="account.id" :value="account.id">
-                                            {{ account.name }} ({{ account.phone_number }})
-                                        </option>
-                                    </select>
-                                    <p class="mt-1 text-xs text-gray-500">Menghubungkan user ini dengan nomor WhatsApp tertentu untuk membalas chat.</p>
+                                    <label class="block text-sm font-medium mb-1">Linked WhatsApp Account (Optional)</label>
+                                    <Multiselect
+                                        v-model="form.whatsapp_account_id"
+                                        :options="whatsappAccounts.map(a => ({ value: a.id, label: `${a.name} (${a.phone_number})` }))"
+                                        placeholder="None / Unlinked"
+                                        searchable
+                                    />
+                                    <p class="mt-1 text-xs text-gray-500 italic">Menghubungkan user ini dengan nomor WhatsApp tertentu untuk membalas chat.</p>
                                 </div>
                             </div>
                             <div class="mt-6 flex gap-2">
