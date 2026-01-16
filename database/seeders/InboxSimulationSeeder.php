@@ -16,7 +16,7 @@ class InboxSimulationSeeder extends Seeder
     public function run(): void
     {
         // 1. Get the admin user and an active WhatsApp account
-        $admin = User::where('email', 'admin@31ciptasolusi.co.id')->first();
+        $admin = User::where('email', 'admin@31solusi.com')->first();
         $waAccount = WhatsappAccount::where('status', 'active')->first();
         $statuses = CustomerStatus::pluck('name')->toArray();
 

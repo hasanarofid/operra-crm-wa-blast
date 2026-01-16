@@ -229,7 +229,7 @@ defineProps({
                         © 2026 PT. Tigasatu Cipta Solusi. All rights reserved.
                     </div>
                     <div class="text-sm text-gray-400 font-medium">
-                        Powered by <a href="https://31ciptasolusi.co.id/" class="text-indigo-600 hover:text-indigo-800" target="_blank">PT. Tigasatu Cipta Solusi</a>
+                        Powered by <a href="https://31solusi.com/" class="text-indigo-600 hover:text-indigo-800" target="_blank">PT. Tigasatu Cipta Solusi</a>
                     </div>
                 </div>
             </div>

@@ -80,7 +80,7 @@ class DatabaseSeeder extends Seeder
         Setting::updateOrCreate(['key' => 'company_name'], ['value' => 'PT. Tigasatu Cipta Solusi']);
         Setting::updateOrCreate(['key' => 'company_address'], ['value' => 'Jl. Teknologi No. 1, Jakarta']);
         Setting::updateOrCreate(['key' => 'company_phone'], ['value' => '021-12345678']);
-        Setting::updateOrCreate(['key' => 'company_email'], ['value' => 'info@31ciptasolusi.co.id']);
+        Setting::updateOrCreate(['key' => 'company_email'], ['value' => 'info@31solusi.com']);
         Setting::updateOrCreate(['key' => 'currency'], ['value' => 'IDR']);
         
         // Meta Global Settings
@@ -146,27 +146,27 @@ class DatabaseSeeder extends Seeder
         ]);
 
         // 8. Legacy Data (Keeping for compatibility)
-        User::updateOrCreate(['email' => 'admin@31ciptasolusi.co.id'], [
+        User::updateOrCreate(['email' => 'admin@31solusi.com'], [
             'name' => 'Admin User',
             'password' => Hash::make('password'),
         ])->assignRole($adminRole);
 
-        User::updateOrCreate(['email' => 'manager@31ciptasolusi.co.id'], [
+        User::updateOrCreate(['email' => 'manager@31solusi.com'], [
             'name' => 'Manager User',
             'password' => Hash::make('password'),
         ])->assignRole($managerRole);
 
-        User::updateOrCreate(['email' => 'staff@31ciptasolusi.co.id'], [
+        User::updateOrCreate(['email' => 'staff@31solusi.com'], [
             'name' => 'Staff User',
             'password' => Hash::make('password'),
         ])->assignRole($staffRole);
 
-        User::updateOrCreate(['email' => 'sales1@31ciptasolusi.co.id'], [
+        User::updateOrCreate(['email' => 'sales1@31solusi.com'], [
             'name' => 'Sales Ahmad',
             'password' => Hash::make('password'),
         ])->assignRole($salesRole);
 
-        User::updateOrCreate(['email' => 'sales2@31ciptasolusi.co.id'], [
+        User::updateOrCreate(['email' => 'sales2@31solusi.com'], [
             'name' => 'Sales Budi',
             'password' => Hash::make('password'),
         ])->assignRole($salesRole);

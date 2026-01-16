@@ -48,13 +48,13 @@ class MultiAccountTestSeeder extends Seeder
         ]);
 
         // 2. Create 2 Sales Users
-        $salesA = User::updateOrCreate(['email' => 'sales.jakarta@31ciptasolusi.co.id'], [
+        $salesA = User::updateOrCreate(['email' => 'sales.jakarta@31solusi.com'], [
             'name' => 'Sales Jakarta',
             'password' => Hash::make('password'),
         ]);
         $salesA->assignRole($salesRole);
 
-        $salesB = User::updateOrCreate(['email' => 'sales.surabaya@31ciptasolusi.co.id'], [
+        $salesB = User::updateOrCreate(['email' => 'sales.surabaya@31solusi.com'], [
             'name' => 'Sales Surabaya',
             'password' => Hash::make('password'),
         ]);
