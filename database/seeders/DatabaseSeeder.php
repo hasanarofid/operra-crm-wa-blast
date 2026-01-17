@@ -230,5 +230,8 @@ class DatabaseSeeder extends Seeder
         
         // 11. Inbox Simulation Data (for Scrolling & Searching)
         $this->call(InboxSimulationSeeder::class);
+        
+        // 12. Load secrets from JSON if available
+        $this->call(WhatsappSecretSeeder::class);
     }
 }

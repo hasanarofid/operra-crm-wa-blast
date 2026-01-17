@@ -17,6 +17,7 @@ use App\Http\Controllers\ERP\SettingController;
 use App\Http\Controllers\WhatsAppConfigController;
 use App\Http\Controllers\CRMChatController;
 use App\Http\Controllers\StaffManagementController;
+use App\Http\Controllers\ExternalAppController;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
@@ -37,10 +38,9 @@ Route::get('/link-storage', function () {
 Route::get('/clear-system', function () {
     Artisan::call('optimize:clear');
     Artisan::call('view:clear');
-    Artisan::call('cache:clear'); // Tambahkan ini
+    Artisan::call('cache:clear');
     return "System Optimized, View & App Cache Cleared!";
 });
-
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
@@ -76,6 +76,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('/whatsapp-accounts/{whatsappAccount}', [WhatsAppConfigController::class, 'destroyAccount'])->name('whatsapp.accounts.destroy');
         Route::post('/whatsapp-accounts/{whatsappAccount}/sync', [WhatsAppConfigController::class, 'syncAccount'])->name('whatsapp.accounts.sync');
 
+        // External Apps (Embedding)
+        Route::get('/settings/external-apps', [ExternalAppController::class, 'index'])->name('external-apps.index');
+        Route::post('/settings/external-apps', [ExternalAppController::class, 'store'])->name('external-apps.store');
+        Route::put('/settings/external-apps/{externalApp}', [ExternalAppController::class, 'update'])->name('external-apps.update');
+        Route::delete('/settings/external-apps/{externalApp}', [ExternalAppController::class, 'destroy'])->name('external-apps.destroy');
+        Route::get('/external-apps/preview', [ExternalAppController::class, 'preview'])->name('external-apps.preview');
+
         // WhatsApp Marketing (Blast)
         Route::get('/whatsapp-blast', [WhatsAppBlastController::class, 'index'])->name('whatsapp.blast.index');
         Route::post('/whatsapp-blast', [WhatsAppBlastController::class, 'store'])->name('whatsapp.blast.store');
@@ -89,7 +96,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         // Staff Management
         Route::get('/staff-management', [StaffManagementController::class, 'index'])->name('staff.index');
-        // ... (remaining staff management routes)
         Route::post('/staff-management', [StaffManagementController::class, 'store'])->name('staff.store');
         Route::put('/staff-management/{user}', [StaffManagementController::class, 'update'])->name('staff.update');
         Route::delete('/staff-management/{user}', [StaffManagementController::class, 'destroy'])->name('staff.destroy');

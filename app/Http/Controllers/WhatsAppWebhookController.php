@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use App\Events\NewChatIncoming;
+use App\Jobs\ForwardWebhookJob;
 use Kreait\Laravel\Firebase\Facades\Firebase;
 
 class WhatsAppWebhookController extends Controller
@@ -98,6 +99,16 @@ class WhatsAppWebhookController extends Controller
             // Tetap jalankan broadcast lokal (opsional, sebagai backup)
             event(new NewChatIncoming($chatSession->load(['customer', 'assignedUser', 'whatsappAccount']), $message));
 
+            // FORWARD TO EXTERNAL APPS (WEBHOOK)
+            ForwardWebhookJob::dispatch([
+                'id' => $message->id,
+                'device' => $deviceNumber,
+                'sender' => $senderNumber,
+                'message' => $messageBody,
+                'timestamp' => now()->timestamp,
+                'type' => 'incoming_message'
+            ]);
+
             return response()->json(['status' => 'success']);
 
         } catch (\Exception $e) {
@@ -149,12 +160,14 @@ class WhatsAppWebhookController extends Controller
      */
     private function verifyMetaWebhook(Request $request)
     {
-        $verifyToken = \App\Models\Setting::where('key', 'meta_webhook_verify_token')->value('value') ?? 'tigasatu_secret_token';
+        $verifyToken = env('WHATSAPP_VERIFY_TOKEN') ?? \App\Models\Setting::where('key', 'meta_webhook_verify_token')->value('value') ?? 'tigasatu_secret_token';
         
         if ($request->input('hub_mode') === 'subscribe' && $request->input('hub_verify_token') === $verifyToken) {
+            Log::info('Meta Webhook Verified Successfully');
             return response($request->input('hub_challenge'), 200);
         }
 
+        Log::warning('Meta Webhook Verification Failed: Token Mismatch');
         return response('Forbidden', 403);
     }
 

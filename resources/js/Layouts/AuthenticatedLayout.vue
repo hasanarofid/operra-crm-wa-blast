@@ -318,6 +318,15 @@ onUnmounted(() => {
                 Manage Staff
               </Link>
             </li>
+            <li v-if="hasRole('super-admin')" class="items-center">
+              <Link
+                :href="route('external-apps.index')"
+                class="text-xs uppercase py-2 font-bold block transition-colors duration-200"
+                :class="route().current('external-apps.*') ? 'text-operra-500' : 'text-gray-700 dark:text-gray-300 hover:text-operra-500'"
+              >
+                External Apps (Embed)
+              </Link>
+            </li>
             <li class="items-center">
               <Link
                 :href="route('profile.edit')"
