@@ -84,6 +84,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::put('/settings/external-apps/{externalApp}', [ExternalAppController::class, 'update'])->name('external-apps.update');
         Route::delete('/settings/external-apps/{externalApp}', [ExternalAppController::class, 'destroy'])->name('external-apps.destroy');
         Route::get('/external-apps/preview', [ExternalAppController::class, 'preview'])->name('external-apps.preview');
+        Route::get('/embed/inbox', [ExternalAppController::class, 'embeddedInbox'])
+            ->middleware(['allow.embed'])
+            ->name('external.inbox');
 
         // WhatsApp Media Management
         Route::get('/whatsapp-media', [WhatsAppMediaController::class, 'index'])->name('whatsapp.media.index');

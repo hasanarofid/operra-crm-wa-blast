@@ -86,10 +86,49 @@ class ExternalAppController extends Controller
     {
         $appKey = $request->query('key');
         $app = ExternalApp::where('app_key', $appKey)->firstOrFail();
+        $type = $request->query('type', 'widget'); // 'widget' or 'inbox'
 
         return view('preview-widget', [
             'app' => $app,
-            'appKey' => $appKey
+            'appKey' => $appKey,
+            'type' => $type
+        ]);
+    }
+
+    public function embeddedInbox(Request $request)
+    {
+        $appKey = $request->query('key');
+        $app = ExternalApp::where('app_key', $appKey)->where('is_active', true)->first();
+
+        if (!$app) {
+            abort(403, 'Invalid or inactive App Key');
+        }
+
+        // Logic to get sessions for this specific app/account
+        // For now, let's assume we show all active official sessions 
+        // OR sessions related to the phone number assigned to this app
+        $sessionsQuery = \App\Models\ChatSession::with(['customer', 'assignedUser', 'whatsappAccount'])
+            ->withCount(['messages as unread_count' => function($query) {
+                $query->where('sender_type', 'customer')->whereNull('read_at');
+            }])
+            ->orderBy('last_message_at', 'desc');
+
+        if ($app->phone_number) {
+            $sessionsQuery->whereHas('whatsappAccount', function($q) use ($app) {
+                $q->where('phone_number', $app->phone_number);
+            });
+        }
+
+        $sessions = $sessionsQuery->get()->map(function($session) {
+            $session->is_unread = $session->unread_count > 0;
+            return $session;
+        });
+
+        return Inertia::render('CRM/Chat/EmbeddedInbox', [
+            'app' => $app,
+            'sessions' => $sessions,
+            'whatsappAccounts' => \App\Models\WhatsappAccount::where('status', 'active')->get(),
+            'availableStatuses' => \App\Models\CustomerStatus::orderBy('order')->get(),
         ]);
     }
 }

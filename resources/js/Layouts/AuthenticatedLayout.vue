@@ -148,6 +148,12 @@ onUnmounted(() => {
 
 <template>
   <div>
+    <!-- Fake fields to prevent browser from showing 'Update Password' or 'Login' popups -->
+    <div style="position: absolute; left: -9999px; top: -9999px;">
+        <input type="text" name="username_fake" autocomplete="username" tabindex="-1">
+        <input type="password" name="password_fake" autocomplete="new-password" tabindex="-1">
+    </div>
+
     <!-- Sidebar -->
     <nav class="md:left-0 md:block md:fixed md:top-0 md:bottom-0 md:overflow-y-auto md:flex-row md:flex-nowrap md:overflow-hidden shadow-xl bg-white dark:bg-gray-800 flex flex-wrap items-center justify-between relative md:w-64 z-50 py-4 px-6">
       <div class="md:flex-col md:items-stretch md:min-h-full md:flex-nowrap px-0 flex flex-wrap items-center justify-between w-full mx-auto">

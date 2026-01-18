@@ -44,8 +44,8 @@ const togglePreview = (key) => {
     alert('Simulasi diaktifkan! Lihat pojok layar Anda.');
 };
 
-const openPreviewPage = (key) => {
-    window.open(route('external-apps.preview', { key: key }), '_blank');
+const openPreviewPage = (key, type = 'widget') => {
+    window.open(route('external-apps.preview', { key: key, type: type }), '_blank');
 };
 
 const toggleSecret = (id) => {
@@ -232,14 +232,19 @@ const copyToClipboard = (text) => {
                                     <td class="px-6 py-4">
                                         <div class="flex flex-col gap-2">
                                             <button @click="copyToClipboard(`<script src='https://crm.hasanarofid.site/js/wa-widget.js' data-key='${app.app_key}'></script>`)" class="text-[10px] bg-operra-50 text-operra-700 px-2 py-1 rounded border border-operra-200 hover:bg-operra-100 transition text-center">
-                                                Copy Snippet
+                                                Copy Widget Snippet
                                             </button>
-                                            <button @click="togglePreview(app.app_key)" :class="previewAppKey === app.app_key ? 'bg-red-500 text-white border-red-600' : 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'" class="text-[10px] px-2 py-1 rounded border transition text-center">
-                                                {{ previewAppKey === app.app_key ? 'Stop Simulation' : 'Quick Preview' }}
+                                            <button @click="openPreviewPage(app.app_key, 'widget')" class="text-[10px] bg-green-50 text-green-700 px-2 py-1 rounded border border-green-200 hover:bg-green-100 transition text-center flex items-center justify-center gap-1">
+                                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                                Preview Widget
                                             </button>
-                                            <button @click="openPreviewPage(app.app_key)" class="text-[10px] bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-200 hover:bg-blue-100 transition text-center flex items-center justify-center gap-1">
+                                            <div class="border-t border-gray-100 my-1"></div>
+                                            <button @click="copyToClipboard(`<iframe src='https://crm.hasanarofid.site/embed/inbox?key=${app.app_key}' style='width:100%; height:600px; border:1px solid #eee; border-radius:12px;'></iframe>`)" class="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-1 rounded border border-indigo-200 hover:bg-indigo-100 transition text-center">
+                                                Copy Inbox Iframe
+                                            </button>
+                                            <button @click="openPreviewPage(app.app_key, 'inbox')" class="text-[10px] bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-200 hover:bg-blue-100 transition text-center flex items-center justify-center gap-1">
                                                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
-                                                Full Preview Page
+                                                Preview Full Inbox
                                             </button>
                                         </div>
                                     </td>

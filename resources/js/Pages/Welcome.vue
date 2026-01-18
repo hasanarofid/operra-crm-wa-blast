@@ -26,13 +26,9 @@ defineProps({
                             Dashboard
                         </Link>
                         <template v-else>
-                            <Link :href="route('login')" class="hidden md:block text-xs font-bold uppercase text-white hover:text-indigo-200 transition-colors">
+                            <Link :href="route('login')" class="rounded-full border border-white/30 px-6 py-2 text-xs font-bold uppercase text-white transition-all hover:bg-white/10 active:scale-95">
                                 Log In
                             </Link>
-                            <!-- <Link v-if="canRegister" :href="route('register')" 
-                                class="rounded-full bg-indigo-600 px-6 py-2 text-xs font-bold uppercase text-white shadow-xl transition-all hover:bg-indigo-700">
-                                Get Started
-                            </Link> -->
                         </template>
                     </template>
                 </div>
