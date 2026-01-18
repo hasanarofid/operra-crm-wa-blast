@@ -118,16 +118,21 @@ class CRMChatController extends Controller
     public function markAsRead(ChatSession $chatSession, Request $request)
     {
         $user = $request->user();
+        $waService = new WhatsAppService();
 
-        // Cari pesan tertua yang belum terbaca di session ini
-        $message = ChatMessage::where('chat_session_id', $chatSession->id)
+        // Ambil semua pesan dari customer yang belum terbaca di session ini
+        $unreadMessages = ChatMessage::where('chat_session_id', $chatSession->id)
             ->where('sender_type', 'customer')
             ->whereNull('read_at')
-            ->orderBy('created_at', 'asc')
-            ->first();
+            ->get();
 
-        // Jika ada, tandai satu pesan tersebut sebagai terbaca
-        if ($message) {
+        foreach ($unreadMessages as $message) {
+            // 1. Mark as read di Meta Official (jika ada vendor_message_id)
+            if ($message->vendor_message_id && $chatSession->whatsappAccount->provider === 'official') {
+                $waService->markAsRead($message->vendor_message_id, $chatSession->whatsappAccount);
+            }
+
+            // 2. Mark as read di Database Lokal
             $message->update(['read_at' => now()]);
         }
 

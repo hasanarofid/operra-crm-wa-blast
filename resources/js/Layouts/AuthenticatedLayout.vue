@@ -285,6 +285,13 @@ onUnmounted(() => {
                 </Link>
             </li>
             <li v-if="hasRole('super-admin')" class="items-center">
+                <Link :href="route('whatsapp.media.index')" 
+                    class="text-xs uppercase py-2 font-bold block transition-colors duration-200"
+                    :class="route().current('whatsapp.media.*') ? 'text-operra-500' : 'text-gray-700 dark:text-gray-300 hover:text-operra-500'">
+                    WA Media Gallery
+                </Link>
+            </li>
+            <li v-if="hasRole('super-admin')" class="items-center">
                 <Link :href="route('customer-statuses.index')" 
                     class="text-xs uppercase py-2 font-bold block transition-colors duration-200"
                     :class="route().current('customer-statuses.*') ? 'text-operra-500' : 'text-gray-700 dark:text-gray-300 hover:text-operra-500'">

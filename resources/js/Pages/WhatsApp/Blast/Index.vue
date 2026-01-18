@@ -67,7 +67,7 @@ const processCampaign = (id) => {
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div class="col-span-1">
                                     <label class="block text-sm font-medium">Campaign Name</label>
-                                    <input v-model="form.name" type="text" placeholder="Promo Ramadhan 2026" class="mt-1 block w-full rounded-md border-gray-300 dark:bg-gray-700 dark:text-white" required>
+                                    <input v-model="form.name" type="text" placeholder="Promo Ramadhan 2026" autocomplete="off" class="mt-1 block w-full rounded-md border-gray-300 dark:bg-gray-700 dark:text-white" required>
                                 </div>
                                 <div class="col-span-1">
                                     <label class="block text-sm font-medium">Sender Account</label>
@@ -94,7 +94,7 @@ const processCampaign = (id) => {
                                 </div>
                                 <div class="col-span-2">
                                     <label class="block text-sm font-medium">Recipient IDs (Comma separated for now)</label>
-                                    <input type="text" @change="form.customer_ids = $event.target.value.split(',')" placeholder="1, 2, 3" class="mt-1 block w-full rounded-md border-gray-300 dark:bg-gray-700 dark:text-white">
+                                    <input type="text" @change="form.customer_ids = $event.target.value.split(',')" placeholder="1, 2, 3" autocomplete="off" class="mt-1 block w-full rounded-md border-gray-300 dark:bg-gray-700 dark:text-white">
                                     <p class="text-xs text-gray-500 mt-1 italic">*Masukkan ID customer, dipisahkan koma. Di versi selanjutnya akan menggunakan filter group.</p>
                                 </div>
                             </div>

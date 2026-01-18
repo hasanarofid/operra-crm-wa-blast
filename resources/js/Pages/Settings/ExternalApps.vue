@@ -125,7 +125,7 @@ const copyToClipboard = (text) => {
                             <div class="grid grid-cols-1 gap-4">
                                 <div>
                                     <label class="block text-sm font-medium">App Name (System/Client Name)</label>
-                                    <input v-model="form.name" type="text" placeholder="e.g. CodeIgniter POS System" class="mt-1 block w-full rounded-md border-gray-300 dark:bg-gray-700 dark:text-white" required>
+                                    <input v-model="form.name" type="text" placeholder="e.g. CodeIgniter POS System" autocomplete="off" class="mt-1 block w-full rounded-md border-gray-300 dark:bg-gray-700 dark:text-white" required>
                                 </div>
                                 <div>
                                     <label class="block text-sm font-medium">WhatsApp Number (Official API)</label>
@@ -139,7 +139,7 @@ const copyToClipboard = (text) => {
                                 </div>
                                 <div>
                                     <label class="block text-sm font-medium">Outbound Webhook URL (Optional)</label>
-                                    <input v-model="form.webhook_url" type="url" placeholder="https://client-system.com/api/webhook" class="mt-1 block w-full rounded-md border-gray-300 dark:bg-gray-700 dark:text-white">
+                                    <input v-model="form.webhook_url" type="url" placeholder="https://client-system.com/api/webhook" autocomplete="off" class="mt-1 block w-full rounded-md border-gray-300 dark:bg-gray-700 dark:text-white">
                                     <p class="text-[10px] text-gray-500 mt-1">URL ini akan menerima data setiap kali ada chat WA masuk ke CRM.</p>
                                 </div>
                                 
@@ -160,7 +160,7 @@ const copyToClipboard = (text) => {
                                     </div>
                                     <div class="mt-2">
                                         <label class="block text-sm font-medium">Welcome Text</label>
-                                        <input v-model="form.widget_settings.welcome_text" type="text" class="mt-1 block w-full rounded-md border-gray-300 dark:bg-gray-700 dark:text-white">
+                                        <input v-model="form.widget_settings.welcome_text" type="text" autocomplete="off" class="mt-1 block w-full rounded-md border-gray-300 dark:bg-gray-700 dark:text-white">
                                     </div>
                                 </div>
 

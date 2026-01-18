@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Setting;
 use App\Models\WhatsappAccount;
+use App\Models\WhatsappTemplate;
 use App\Services\WhatsAppService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -105,6 +106,29 @@ class WhatsAppConfigController extends Controller
     {
         $waService->syncAccountStatus($whatsappAccount);
         return redirect()->back()->with('message', 'Account status synced.');
+    }
+
+    public function syncTemplates(WhatsappAccount $whatsappAccount, WhatsAppService $waService)
+    {
+        $result = $waService->fetchTemplates($whatsappAccount);
+
+        if ($result['status']) {
+            foreach ($result['data'] as $tpl) {
+                if ($tpl['status'] !== 'APPROVED') continue;
+
+                \App\Models\WhatsappTemplate::updateOrCreate(
+                    ['whatsapp_account_id' => $whatsappAccount->id, 'name' => $tpl['name']],
+                    [
+                        'language' => $tpl['language'],
+                        'category' => $tpl['category'],
+                        'components' => $tpl['components'],
+                    ]
+                );
+            }
+            return redirect()->back()->with('message', 'Templates synced successfully.');
+        }
+
+        return redirect()->back()->withErrors(['message' => 'Failed to sync templates: ' . $result['message']]);
     }
 
     public function syncFromMeta(WhatsAppService $waService)

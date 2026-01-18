@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use App\Events\NewChatIncoming;
 use App\Jobs\ForwardWebhookJob;
+use App\Services\WhatsAppService;
 use Kreait\Laravel\Firebase\Facades\Firebase;
 
 class WhatsAppWebhookController extends Controller
@@ -39,6 +40,8 @@ class WhatsAppWebhookController extends Controller
         $deviceNumber = $payload['device']; // Phone Number ID (Official) atau Device Number (Fonnte)
         $senderNumber = $payload['sender']; 
         $messageBody = $payload['message'];
+        $vendorId = $payload['vendor_id'] ?? null;
+        $messageType = $payload['type'] ?? 'text';
 
         $whatsappAccount = WhatsappAccount::where('phone_number', $deviceNumber)->first();
         if (!$whatsappAccount) {
@@ -81,12 +84,21 @@ class WhatsAppWebhookController extends Controller
                 }
             }
 
+            // DOWNLOAD MEDIA IF ANY
+            $attachmentPath = null;
+            if (isset($payload['media_id']) && $whatsappAccount->provider === 'official') {
+                $waService = new WhatsAppService();
+                $attachmentPath = $waService->downloadMedia($payload['media_id'], $whatsappAccount);
+            }
+
             // 5. Simpan Pesan ke Database Local
             $message = ChatMessage::create([
                 'chat_session_id' => $chatSession->id,
+                'vendor_message_id' => $vendorId,
                 'sender_type' => 'customer',
                 'message_body' => $messageBody,
-                'message_type' => 'text',
+                'message_type' => $messageType,
+                'attachment_path' => $attachmentPath,
             ]);
 
             $chatSession->update(['last_message_at' => now()]);
@@ -129,6 +141,8 @@ class WhatsAppWebhookController extends Controller
                 'device' => $request->input('device'),
                 'sender' => $request->input('sender'),
                 'message' => $request->input('message'),
+                'vendor_id' => $request->input('id'), // Fonnte also has IDs
+                'type' => 'text',
             ];
         }
 
@@ -141,11 +155,52 @@ class WhatsAppWebhookController extends Controller
                 
                 if (isset($value['messages'][0])) {
                     $message = $value['messages'][0];
-                    return [
+                    $payload = [
                         'device' => $value['metadata']['phone_number_id'],
                         'sender' => $message['from'],
-                        'message' => $message['text']['body'] ?? ($message['button']['text'] ?? 'Media/Other'),
+                        'vendor_id' => $message['id'],
+                        'type' => $message['type'],
                     ];
+
+                    // Teks
+                    if ($message['type'] === 'text') {
+                        $payload['message'] = $message['text']['body'];
+                    } 
+                    // Gambar
+                    elseif ($message['type'] === 'image') {
+                        $payload['message'] = '[Gambar]';
+                        $payload['media_id'] = $message['image']['id'];
+                        $payload['caption'] = $message['image']['caption'] ?? null;
+                    }
+                    // Dokumen
+                    elseif ($message['type'] === 'document') {
+                        $payload['message'] = '[Dokumen] ' . ($message['document']['filename'] ?? '');
+                        $payload['media_id'] = $message['document']['id'];
+                    }
+                    // Audio / Voice
+                    elseif ($message['type'] === 'audio') {
+                        $payload['message'] = '[Audio]';
+                        $payload['media_id'] = $message['audio']['id'];
+                    }
+                    // Video
+                    elseif ($message['type'] === 'video') {
+                        $payload['message'] = '[Video]';
+                        $payload['media_id'] = $message['video']['id'];
+                    }
+                    // Lokasi
+                    elseif ($message['type'] === 'location') {
+                        $payload['message'] = "[Lokasi] https://www.google.com/maps?q={$message['location']['latitude']},{$message['location']['longitude']}";
+                    }
+                    // Interaktif (Button/List)
+                    elseif ($message['type'] === 'interactive') {
+                        $payload['message'] = $message['interactive']['button_reply']['title'] ?? 
+                                             ($message['interactive']['list_reply']['title'] ?? 'Interactive Message');
+                    }
+                    else {
+                        $payload['message'] = '[' . ucfirst($message['type']) . ']';
+                    }
+
+                    return $payload;
                 }
             } catch (\Exception $e) {
                 Log::error('Meta Payload Parse Error: ' . $e->getMessage());

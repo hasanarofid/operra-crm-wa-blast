@@ -83,6 +83,12 @@ const syncAccount = (id) => {
     });
 };
 
+const syncTemplates = (id) => {
+    accountForm.post(route('whatsapp.accounts.sync-templates', id), {
+        onSuccess: () => alert('Templates synced successfully!')
+    });
+};
+
 const syncFromMeta = () => {
     if (confirm('Import all registered phone numbers from Meta WABA?')) {
         accountForm.post(route('whatsapp.accounts.sync-meta'), {
@@ -126,6 +132,7 @@ const resetAccountForm = () => {
                                             v-model="form.meta_access_token" 
                                             :type="showToken ? 'text' : 'password'" 
                                             placeholder="EAABw..." 
+                                            autocomplete="off"
                                             class="block w-full rounded-md border-gray-300 dark:bg-gray-700 dark:text-white pr-10 transition-all duration-200"
                                         >
                                         <button 
@@ -152,6 +159,7 @@ const resetAccountForm = () => {
                                                 v-model="form.meta_webhook_verify_token" 
                                                 :type="showVerifyToken ? 'text' : 'password'" 
                                                 placeholder="tigasatu_secret" 
+                                                autocomplete="off"
                                                 class="block w-full rounded-md border-gray-300 dark:bg-gray-700 dark:text-white pr-10"
                                             >
                                             <button 
@@ -171,6 +179,7 @@ const resetAccountForm = () => {
                                                 v-model="form.meta_app_id" 
                                                 :type="showAppId ? 'text' : 'password'" 
                                                 placeholder="1234567890" 
+                                                autocomplete="off"
                                                 class="block w-full rounded-md border-gray-300 dark:bg-gray-700 dark:text-white pr-10"
                                             >
                                             <button 
@@ -191,6 +200,7 @@ const resetAccountForm = () => {
                                             v-model="form.meta_waba_id" 
                                             :type="showWabaId ? 'text' : 'password'" 
                                             placeholder="Masukkan WABA ID" 
+                                            autocomplete="off"
                                             class="block w-full rounded-md border-gray-300 dark:bg-gray-700 dark:text-white pr-10"
                                         >
                                         <button 
@@ -290,6 +300,7 @@ const resetAccountForm = () => {
                                     <td class="px-6 py-4 text-sm flex gap-2">
                                         <button @click="editAccount(account)" class="text-blue-600 hover:underline">Edit</button>
                                         <button @click="syncAccount(account.id)" class="text-green-600 hover:underline">Sync</button>
+                                        <button v-if="account.provider === 'official'" @click="syncTemplates(account.id)" class="text-indigo-600 hover:underline">Templates</button>
                                         <button @click="deleteAccount(account.id)" class="text-red-600 hover:underline">Delete</button>
                                     </td>
                                 </tr>

@@ -166,6 +166,103 @@ class WhatsAppService
     }
 
     /**
+     * Menarik daftar template dari Meta (Official API)
+     *
+     * @param \App\Models\WhatsappAccount $account
+     * @return array
+     */
+    public function fetchTemplates($account)
+    {
+        $token = $account->api_credentials['token'] ?: $this->token;
+        $wabaId = Setting::where('key', 'meta_waba_id')->value('value');
+        
+        if (!$wabaId) return ['status' => false, 'message' => 'WABA ID not configured.'];
+
+        try {
+            $response = Http::withToken($token)->get("https://graph.facebook.com/v18.0/{$wabaId}/message_templates");
+            
+            if ($response->successful()) {
+                return [
+                    'status' => true,
+                    'data' => $response->json()['data'] ?? []
+                ];
+            }
+            return ['status' => false, 'message' => $response->body()];
+        } catch (\Exception $e) {
+            Log::error('WhatsApp Fetch Templates Error: ' . $e->getMessage());
+            return ['status' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Menandai pesan sebagai terbaca (Official API)
+     *
+     * @param string $messageId ID Pesan dari vendor (wamid)
+     * @param \App\Models\WhatsappAccount $account
+     * @return array
+     */
+    public function markAsRead($messageId, $account)
+    {
+        if ($account->provider !== 'official') {
+            return ['status' => true];
+        }
+
+        $token = $account->api_credentials['token'] ?: $this->token;
+        $senderId = $account->phone_number; // Meta uses Phone Number ID
+        $endpoint = "https://graph.facebook.com/v18.0/{$senderId}/messages";
+
+        try {
+            $response = Http::withToken($token)->post($endpoint, [
+                'messaging_product' => 'whatsapp',
+                'status' => 'read',
+                'message_id' => $messageId,
+            ]);
+
+            return [
+                'status' => $response->successful(),
+                'data' => $response->json()
+            ];
+        } catch (\Exception $e) {
+            Log::error('WhatsApp MarkAsRead Error: ' . $e->getMessage());
+            return ['status' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Download media from Meta (Official API)
+     */
+    public function downloadMedia($mediaId, $account)
+    {
+        $token = $account->api_credentials['token'] ?: $this->token;
+        
+        try {
+            // 1. Get Media URL
+            $response = Http::withToken($token)->get("https://graph.facebook.com/v18.0/{$mediaId}");
+            
+            if (!$response->successful()) return null;
+            
+            $mediaUrl = $response->json()['url'];
+            
+            // 2. Download Content
+            $mediaResponse = Http::withToken($token)->get($mediaUrl);
+            
+            if (!$mediaResponse->successful()) return null;
+            
+            $content = $mediaResponse->body();
+            $mimeType = $mediaResponse->header('Content-Type');
+            $extension = explode('/', $mimeType)[1] ?? 'bin';
+            
+            $fileName = "whatsapp/media/{$mediaId}.{$extension}";
+            \Illuminate\Support\Facades\Storage::disk('public')->put($fileName, $content);
+            
+            return $fileName;
+        } catch (\Exception $e) {
+            Log::error('WhatsApp Media Download Error: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
      * Sinkronisasi status akun (Centang Hijau & Koneksi)
      * 
      * @param \App\Models\WhatsappAccount $account

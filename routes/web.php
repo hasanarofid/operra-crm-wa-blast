@@ -18,6 +18,7 @@ use App\Http\Controllers\WhatsAppConfigController;
 use App\Http\Controllers\CRMChatController;
 use App\Http\Controllers\StaffManagementController;
 use App\Http\Controllers\ExternalAppController;
+use App\Http\Controllers\WhatsAppMediaController;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
@@ -75,6 +76,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::put('/whatsapp-accounts/{whatsappAccount}', [WhatsAppConfigController::class, 'updateAccount'])->name('whatsapp.accounts.update');
         Route::delete('/whatsapp-accounts/{whatsappAccount}', [WhatsAppConfigController::class, 'destroyAccount'])->name('whatsapp.accounts.destroy');
         Route::post('/whatsapp-accounts/{whatsappAccount}/sync', [WhatsAppConfigController::class, 'syncAccount'])->name('whatsapp.accounts.sync');
+        Route::post('/whatsapp-accounts/{whatsappAccount}/sync-templates', [WhatsAppConfigController::class, 'syncTemplates'])->name('whatsapp.accounts.sync-templates');
 
         // External Apps (Embedding)
         Route::get('/settings/external-apps', [ExternalAppController::class, 'index'])->name('external-apps.index');
@@ -82,6 +84,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::put('/settings/external-apps/{externalApp}', [ExternalAppController::class, 'update'])->name('external-apps.update');
         Route::delete('/settings/external-apps/{externalApp}', [ExternalAppController::class, 'destroy'])->name('external-apps.destroy');
         Route::get('/external-apps/preview', [ExternalAppController::class, 'preview'])->name('external-apps.preview');
+
+        // WhatsApp Media Management
+        Route::get('/whatsapp-media', [WhatsAppMediaController::class, 'index'])->name('whatsapp.media.index');
+        Route::delete('/whatsapp-media/{chatMessage}', [WhatsAppMediaController::class, 'destroy'])->name('whatsapp.media.destroy');
 
         // WhatsApp Marketing (Blast)
         Route::get('/whatsapp-blast', [WhatsAppBlastController::class, 'index'])->name('whatsapp.blast.index');
