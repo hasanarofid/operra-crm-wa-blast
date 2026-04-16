@@ -9,7 +9,7 @@ use App\Models\CustomerStatus;
 use App\Services\WhatsAppService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
-use Kreait\Laravel\Firebase\Facades\Firebase;
+use Illuminate\Support\Facades\Redis;
 
 class CRMChatController extends Controller
 {
@@ -147,19 +147,22 @@ class CRMChatController extends Controller
             ->whereNull('read_at')
             ->count();
 
-        // Update Firebase Notifications
+        // Update UI via Redis (Node.js Socket.io)
         try {
-            $database = Firebase::database();
-            // Update total di navbar
-            $database->getReference('notifications/users/' . $user->id)
-                ->update(['unread_count' => $unreadCount]);
+            $data = [
+                'type' => 'messages_read',
+                'receiver_id' => $user->id,
+                'data' => [
+                    'session_id' => $chatSession->id,
+                    'unread_count' => $unreadCount,
+                    'session_unread_count' => $sessionUnreadCount,
+                ]
+            ];
             
-            // Juga update session spesifik di Firebase agar badge angka di sidebar berkurang
-            $database->getReference('inbox/users/' . $user->id . '/' . $chatSession->id)
-                ->update(['session_unread_count' => $sessionUnreadCount]);
+            Redis::publish('crm-events', json_encode($data));
                 
         } catch (\Exception $e) {
-            \Log::error('Firebase Update Error (markAsRead): ' . $e->getMessage());
+            \Log::error('Redis Publish Error (markAsRead): ' . $e->getMessage());
         }
 
         return response()->json([

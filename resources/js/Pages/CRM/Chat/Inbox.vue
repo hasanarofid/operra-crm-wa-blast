@@ -3,8 +3,7 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, usePage } from '@inertiajs/vue3';
 import { ref, onMounted, nextTick } from 'vue';
 import axios from 'axios';
-import { database } from '@/firebase';
-import { ref as dbRef, onValue, off } from "firebase/database";
+import { socket, joinUserRoom } from '@/socket';
 
 const { props: pageProps } = usePage();
 
@@ -82,49 +81,54 @@ onMounted(() => {
         }, 500);
     }
     
-    // 1. Listen ke Firebase Realtime Database
-    const userInboxRef = dbRef(database, `inbox/users/${pageProps.auth.user.id}`);
-    
-    onValue(userInboxRef, (snapshot) => {
-        const data = snapshot.val();
-        if (data) {
-            // Firebase mengembalikan objek, kita butuh data terbaru
-            // Karena kita nge-set data dengan key = session_id di backend
-            Object.values(data).forEach((incoming) => {
-                const { session, message } = incoming;
+    // 1. Listen ke Socket.io
+    joinUserRoom(pageProps.auth.user.id);
 
-                // Update daftar session (pindahkan ke paling atas)
-                const index = sessionsList.value.findIndex(s => s.id === session.id);
-                
-                // Tambahkan flag unread jika pesan dari customer dan bukan session yang sedang dibuka
-                const isUnread = message.sender_type === 'customer' && (!selectedSession.value || selectedSession.value.id !== session.id);
-                const updatedSession = { 
-                    ...session, 
-                    is_unread: isUnread || (index !== -1 && sessionsList.value[index].is_unread),
-                    session_unread_count: incoming.session_unread_count || 0,
-                    last_message_at: message.created_at // Update timestamp terakhir
-                };
+    socket.on('new_message', (data) => {
+        const { session, message } = data;
 
-                if (index !== -1) {
-                    sessionsList.value.splice(index, 1);
-                }
-                sessionsList.value.unshift(updatedSession);
-                
-                // Urutkan list agar pesan terbaru selalu di paling atas
-                sessionsList.value.sort((a, b) => {
-                    return new Date(b.last_message_at) - new Date(a.last_message_at);
-                });
+        // Update daftar session (pindahkan ke paling atas)
+        const index = sessionsList.value.findIndex(s => s.id === session.id);
+        
+        // Tambahkan flag unread jika pesan dari customer dan bukan session yang sedang dibuka
+        const isUnread = message.sender_type === 'customer' && (!selectedSession.value || selectedSession.value.id !== session.id);
+        
+        // Get unread count from payload (sent by Laravel via Node)
+        const updatedSession = { 
+            ...session, 
+            is_unread: isUnread || (index !== -1 && sessionsList.value[index].is_unread),
+            session_unread_count: data.unread_count || 0,
+            last_message_at: message.created_at
+        };
 
-                // Jika sedang membuka session tersebut, tambah pesan secara real-time
-                if (selectedSession.value && selectedSession.value.id === session.id) {
-                    // Cek agar tidak duplikat (karena Firebase onValue trigger tiap ada perubahan)
-                    const isMessageExist = messages.value.some(m => m.id === message.id);
-                    if (!isMessageExist) {
-                        messages.value.push(message);
-                        scrollToBottom();
-                    }
-                }
-            });
+        if (index !== -1) {
+            sessionsList.value.splice(index, 1);
+        }
+        sessionsList.value.unshift(updatedSession);
+        
+        // Urutkan list agar pesan terbaru selalu di paling atas
+        sessionsList.value.sort((a, b) => {
+            return new Date(b.last_message_at) - new Date(a.last_message_at);
+        });
+
+        // Jika sedang membuka session tersebut, tambah pesan secara real-time
+        if (selectedSession.value && selectedSession.value.id === session.id) {
+            const isMessageExist = messages.value.some(m => m.id === message.id);
+            if (!isMessageExist) {
+                messages.value.push(message);
+                scrollToBottom();
+            }
+        }
+    });
+
+    socket.on('messages_read', (data) => {
+        const { session_id, unread_count, session_unread_count } = data;
+        const session = sessionsList.value.find(s => s.id === session_id);
+        if (session) {
+            session.session_unread_count = session_unread_count;
+            if (session_unread_count === 0) {
+                session.is_unread = false;
+            }
         }
     });
 

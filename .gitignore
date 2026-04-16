@@ -13,10 +13,13 @@
 /.zed
 /auth.json
 /node_modules
+/node-service/node_modules
 /public/build
 /public/hot
 /public/storage
 /storage/*.key
+/internal_docs
+/docs_internal
 /storage/pail
 /vendor
 /storage/app/whatsapp_secrets.json

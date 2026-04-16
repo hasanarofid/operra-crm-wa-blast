@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\DB;
 use App\Events\NewChatIncoming;
 use App\Jobs\ForwardWebhookJob;
 use App\Services\WhatsAppService;
-use Kreait\Laravel\Firebase\Facades\Firebase;
+use Illuminate\Support\Facades\Redis;
 
 class WhatsAppWebhookController extends Controller
 {
@@ -105,8 +105,8 @@ class WhatsAppWebhookController extends Controller
 
             DB::commit();
 
-            // 6. PUSH KE FIREBASE REALTIME DATABASE
-            $this->pushToFirebase($chatSession, $message);
+            // 6. PUBLISH KE REDIS (Untuk Realtime Node.js)
+            $this->publishToRedis($chatSession, $message);
 
             // Tetap jalankan broadcast lokal (opsional, sebagai backup)
             event(new NewChatIncoming($chatSession->load(['customer', 'assignedUser', 'whatsappAccount']), $message));
@@ -227,50 +227,37 @@ class WhatsAppWebhookController extends Controller
     }
 
     /**
-     * Push data ke Firebase Realtime Database
+     * Publish data ke Redis untuk di-handle oleh Node.js (Socket.io & Push Notification)
      */
-    private function pushToFirebase($chatSession, $message)
+    private function publishToRedis($chatSession, $message)
     {
         try {
-            $database = Firebase::database();
-            
-            // Hitung unread count untuk user ini
+            // Hitung unread count untuk user ini (sebagai data tambahan)
             $unreadCount = ChatMessage::whereHas('chatSession', function($query) use ($chatSession) {
                 $query->where('assigned_user_id', $chatSession->assigned_user_id);
             })->where('sender_type', 'customer')->whereNull('read_at')->count();
 
-            // Hitung unread count per session
-            $sessionUnreadCount = ChatMessage::where('chat_session_id', $chatSession->id)
-                ->where('sender_type', 'customer')
-                ->whereNull('read_at')
-                ->count();
-
-            // Data untuk di-push
             $data = [
-                'session' => $chatSession->load(['customer', 'whatsappAccount']),
-                'message' => $message,
-                'unread_count' => $unreadCount,
-                'session_unread_count' => $sessionUnreadCount,
-                'timestamp' => now()->timestamp,
+                'type' => 'incoming_message',
+                'receiver_id' => $chatSession->assigned_user_id,
+                'data' => [
+                    'session' => $chatSession->load(['customer', 'whatsappAccount']),
+                    'message' => $message,
+                    'unread_count' => $unreadCount,
+                ],
+                'notification' => [
+                    'title' => 'Pesan dari ' . ($chatSession->customer->name ?? $chatSession->customer->phone),
+                    'body' => $message->message_body,
+                ]
             ];
 
-            // 1. Update daftar session global (untuk admin/manager)
-            $database->getReference('inbox/global/' . $chatSession->id)
-                ->set($data);
+            // Cek apakah user memiliki subscription untuk push notification (opsional jika sudah ada di DB)
+            // Untuk saat ini kita kirim flag receiver_id agar Node.js yang memproses sisanya
+            Redis::publish('crm-events', json_encode($data));
 
-            // 2. Update daftar session spesifik per user yang di-assign (untuk sales)
-            if ($chatSession->assigned_user_id) {
-                $database->getReference('inbox/users/' . $chatSession->assigned_user_id . '/' . $chatSession->id)
-                    ->set($data);
-                
-                // 3. Update unread count total untuk user tersebut secara realtime
-                $database->getReference('notifications/users/' . $chatSession->assigned_user_id)
-                    ->update(['unread_count' => $unreadCount]);
-            }
-
-            Log::info('Firebase Push Success for Session: ' . $chatSession->id);
+            Log::info('Redis Publish Success for Session: ' . $chatSession->id);
         } catch (\Exception $e) {
-            Log::error('Firebase Push Error: ' . $e->getMessage());
+            Log::error('Redis Publish Error: ' . $e->getMessage());
         }
     }
 }

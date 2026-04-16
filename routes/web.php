@@ -19,6 +19,7 @@ use App\Http\Controllers\CRMChatController;
 use App\Http\Controllers\StaffManagementController;
 use App\Http\Controllers\ExternalAppController;
 use App\Http\Controllers\WhatsAppMediaController;
+use App\Http\Controllers\PushSubscriptionController;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
@@ -115,6 +116,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+
+    // Push Notifications (Native Web Push)
+    Route::post('/push-subscriptions', [PushSubscriptionController::class, 'subscribe'])->name('push.subscribe');
+    Route::post('/push-subscriptions/unsubscribe', [PushSubscriptionController::class, 'unsubscribe'])->name('push.unsubscribe');
 });
 
 require __DIR__.'/auth.php';

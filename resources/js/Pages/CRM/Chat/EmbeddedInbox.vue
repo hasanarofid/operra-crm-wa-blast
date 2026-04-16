@@ -3,8 +3,7 @@ import EmbeddedLayout from '@/Layouts/EmbeddedLayout.vue';
 import { Head } from '@inertiajs/vue3';
 import { ref, onMounted, nextTick, watch } from 'vue';
 import axios from 'axios';
-import { database } from '@/firebase';
-import { ref as dbRef, onValue } from "firebase/database";
+import { socket } from '@/socket';
 
 const props = defineProps({
     app: Object,
@@ -57,44 +56,52 @@ const resetSelection = () => {
 onMounted(() => {
     filteredSessions.value = sessionsList.value;
     
-    // Firebase listener (Global Inbox for the app's channel)
-    const globalInboxRef = dbRef(database, `inbox/global`);
+    // Socket.io listener (Global Inbox)
+    if (!socket.connected) socket.connect();
     
-    onValue(globalInboxRef, (snapshot) => {
-        const data = snapshot.val();
-        if (data) {
-            Object.values(data).forEach((incoming) => {
-                const { session, message } = incoming;
-                
-                // Only show messages for this app's number if configured
-                if (props.app.phone_number && session.whatsapp_account?.phone_number !== props.app.phone_number) {
-                    return;
-                }
+    socket.emit('join_inbox', 'global_admin');
 
-                const index = sessionsList.value.findIndex(s => s.id === session.id);
-                const isUnread = message.sender_type === 'customer' && (!selectedSession.value || selectedSession.value.id !== session.id);
-                
-                const updatedSession = { 
-                    ...session, 
-                    is_unread: isUnread || (index !== -1 && sessionsList.value[index].is_unread),
-                    session_unread_count: incoming.session_unread_count || 0,
-                    last_message_at: message.created_at
-                };
+    socket.on('new_message_global', (data) => {
+        const { session, message } = data;
+        
+        // Only show messages for this app's number if configured
+        if (props.app.phone_number && session.whatsapp_account?.phone_number !== props.app.phone_number) {
+            return;
+        }
 
-                if (index !== -1) {
-                    sessionsList.value.splice(index, 1);
-                }
-                sessionsList.value.unshift(updatedSession);
-                sessionsList.value.sort((a, b) => new Date(b.last_message_at) - new Date(a.last_message_at));
+        const index = sessionsList.value.findIndex(s => s.id === session.id);
+        const isUnread = message.sender_type === 'customer' && (!selectedSession.value || selectedSession.value.id !== session.id);
+        
+        const updatedSession = { 
+            ...session, 
+            is_unread: isUnread || (index !== -1 && sessionsList.value[index].is_unread),
+            session_unread_count: data.session_unread_count || 0,
+            last_message_at: message.created_at
+        };
 
-                if (selectedSession.value && selectedSession.value.id === session.id) {
-                    const isMessageExist = messages.value.some(m => m.id === message.id);
-                    if (!isMessageExist) {
-                        messages.value.push(message);
-                        scrollToBottom();
-                    }
-                }
-            });
+        if (index !== -1) {
+            sessionsList.value.splice(index, 1);
+        }
+        sessionsList.value.unshift(updatedSession);
+        sessionsList.value.sort((a, b) => new Date(b.last_message_at) - new Date(a.last_message_at));
+
+        if (selectedSession.value && selectedSession.value.id === session.id) {
+            const isMessageExist = messages.value.some(m => m.id === message.id);
+            if (!isMessageExist) {
+                messages.value.push(message);
+                scrollToBottom();
+            }
+        }
+    });
+
+    socket.on('messages_read', (data) => {
+        const { session_id, session_unread_count } = data;
+        const session = sessionsList.value.find(s => s.id === session_id);
+        if (session) {
+            session.session_unread_count = session_unread_count;
+            if (session_unread_count === 0) {
+                session.is_unread = false;
+            }
         }
     });
 });

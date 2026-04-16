@@ -4,8 +4,7 @@ import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 import Dropdown from '@/Components/Dropdown.vue';
 import DropdownLink from '@/Components/DropdownLink.vue';
 import { Link, usePage } from '@inertiajs/vue3';
-import { database } from '@/firebase';
-import { ref as dbRef, onValue } from "firebase/database";
+import { socket, joinUserRoom } from '@/socket';
 
 // Global variable to persist across page navigations (Inertia re-mounts)
 let globalLastSoundPlayedMessageId = null;
@@ -34,14 +33,52 @@ const playNotificationSound = () => {
 const hasRole = (role) => page.props.auth.user.roles.includes(role);
 const hasPermission = (permission) => page.props.auth.user.permissions.includes(permission);
 
+const urlBase64ToUint8Array = (base64String) => {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding)
+        .replace(/\-/g, '+')
+        .replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+};
+
+const subscribeToPush = async () => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    
+    try {
+        const registration = await navigator.serviceWorker.ready;
+        const subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(page.props.vapidPublicKey)
+        });
+
+        await axios.post(route('push.subscribe'), subscription);
+        console.log('[Operra] Push Subscription successful');
+    } catch (e) {
+        console.warn('[Operra] Push Subscription failed:', e);
+    }
+};
+
 const requestPermissions = async () => {
-    // 1. Request Notification Permission
+    // 1. Service Worker Registration
+    if ('serviceWorker' in navigator) {
+        await navigator.serviceWorker.register('/sw.js');
+    }
+
+    // 2. Request Notification Permission
     if ("Notification" in window) {
         try {
             const permission = await Notification.requestPermission();
-            console.log('[PT. Tigasatu Cipta Solusi] Notification permission:', permission);
+            console.log('[Operra] Notification permission:', permission);
+            if (permission === 'granted') {
+                await subscribeToPush();
+            }
         } catch (e) {
-            console.error('[PT. Tigasatu Cipta Solusi] Error requesting notification permission:', e);
+            console.error('[Operra] Error requesting notification permission:', e);
         }
     }
 
@@ -105,35 +142,28 @@ onMounted(() => {
         document.documentElement.classList.add('dark');
     }
 
-    // Global notification sound listener
+    // Global notification sound & unread count listener
     if (page.props.auth.user) {
-        const userInboxRef = dbRef(database, `inbox/users/${page.props.auth.user.id}`);
-        unsubInbox = onValue(userInboxRef, (snapshot) => {
-            const data = snapshot.val();
-            if (data) {
-                const incomingData = Object.values(data);
-                
-                // Temukan pesan terbaru dari customer untuk play sound
-                const latestCustomerMessage = incomingData
-                    .map(d => d.message)
-                    .filter(m => m.sender_type === 'customer')
-                    .sort((a, b) => b.id - a.id)[0];
+        joinUserRoom(page.props.auth.user.id);
 
-                if (latestCustomerMessage && latestCustomerMessage.id !== globalLastSoundPlayedMessageId) {
-                    // Hanya bunyikan suara jika bukan loading pertama kali (saat web pertama kali dibuka)
-                    if (globalLastSoundPlayedMessageId !== null) {
-                        playNotificationSound();
-                    }
-                    globalLastSoundPlayedMessageId = latestCustomerMessage.id;
+        socket.on('new_message', (data) => {
+            const { message, unread_count } = data;
+            
+            // Update unread count global
+            realTimeUnreadCount.value = unread_count;
+
+            // Play sound if customer message
+            if (message.sender_type === 'customer' && message.id !== globalLastSoundPlayedMessageId) {
+                // Hanya bunyikan suara jika bukan loading pertama kali (saat web pertama kali dibuka)
+                if (globalLastSoundPlayedMessageId !== null) {
+                    playNotificationSound();
                 }
+                globalLastSoundPlayedMessageId = message.id;
             }
         });
 
-        // Global unread count listener
-        const userNotificationRef = dbRef(database, `notifications/users/${page.props.auth.user.id}`);
-        unsubNotif = onValue(userNotificationRef, (snapshot) => {
-            const data = snapshot.val();
-            if (data && typeof data.unread_count !== 'undefined') {
+        socket.on('messages_read', (data) => {
+            if (typeof data.unread_count !== 'undefined') {
                 realTimeUnreadCount.value = data.unread_count;
             }
         });
@@ -141,8 +171,10 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-    if (unsubInbox) unsubInbox();
-    if (unsubNotif) unsubNotif();
+    // Socket.io doesn't strictly need manual unsub for these specific listeners 
+    // if using a global connection, but we could do socket.off() if desired.
+    socket.off('new_message');
+    socket.off('messages_read');
 });
 </script>
 

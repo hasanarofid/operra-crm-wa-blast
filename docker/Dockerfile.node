@@ -1,0 +1,19 @@
+FROM node:20-alpine
+
+# Set working directory
+WORKDIR /usr/src/app
+
+# Copy package.json and package-lock.json (if exists)
+COPY node-service/package*.json ./
+
+# Install dependencies
+RUN npm install --production
+
+# Copy application source
+COPY node-service/ .
+
+# Expose port
+EXPOSE 3000
+
+# Start application
+CMD ["node", "index.js"]
