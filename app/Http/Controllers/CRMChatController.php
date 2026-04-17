@@ -10,6 +10,7 @@ use App\Services\WhatsAppService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Redis;
+use Illuminate\Support\Facades\Log;
 
 class CRMChatController extends Controller
 {
@@ -54,28 +55,42 @@ class CRMChatController extends Controller
             }
         }
 
-        $sessionsQuery = ChatSession::with(['customer', 'assignedUser', 'whatsappAccount'])
-            ->withCount(['messages as unread_count' => function($query) {
-                $query->where('sender_type', 'customer')->whereNull('read_at');
+        $sessionsQuery = ChatSession::with(['customer', 'assignedUser', 'whatsappAccount', 'peerUser'])
+            ->withCount(['messages as unread_count' => function($query) use ($user) {
+                $query->whereNull('read_at')->where('sender_id', '!=', $user->id);
             }])
             ->orderBy('last_message_at', 'desc');
 
-        // RBAC: Sales hanya melihat chat dari customer yang di-assign ke dia
-        if ($user->hasRole('sales')) {
-            $sessionsQuery->whereHas('customer', function($q) use ($user) {
-                $q->where('assigned_to', $user->id);
+        // RBAC for Sales
+        if ($user->hasRole('sales') && !$user->hasRole('super-admin') && !$user->hasRole('manager')) {
+            $sessionsQuery->where(function($q) use ($user) {
+                $q->where('assigned_user_id', $user->id)
+                  ->orWhere('peer_user_id', $user->id);
             });
         }
 
         $sessions = $sessionsQuery->get()->map(function($session) {
             $session->is_unread = $session->unread_count > 0;
+            // Mark staff session
+            if ($session->peer_user_id) {
+                $session->is_staff_chat = true;
+            }
             return $session;
         });
+
+        // Get list of chatable staff
+        $staffMembers = [];
+        if ($user->hasRole('super-admin') || $user->hasRole('manager')) {
+            $staffMembers = \App\Models\User::where('id', '!=', $user->id)->get();
+        } else {
+            $staffMembers = \App\Models\User::role(['super-admin', 'manager'])->get();
+        }
 
         return Inertia::render('CRM/Chat/Inbox', [
             'sessions' => $sessions,
             'whatsappAccounts' => WhatsappAccount::where('status', 'active')->get(),
             'availableStatuses' => CustomerStatus::orderBy('order')->get(),
+            'staffMembers' => $staffMembers,
         ]);
     }
 
@@ -92,10 +107,9 @@ class CRMChatController extends Controller
     {
         $user = $request->user();
 
-        // Security check: Sales hanya bisa melihat chat miliknya, 
-        // KECUALI jika dia juga seorang super-admin atau manager.
+        // Security check: Sales hanya bisa melihat chat miliknya atau chat di mana dia adalah peer.
         if ($user->hasRole('sales') && !$user->hasRole('super-admin') && !$user->hasRole('manager')) {
-            if ($chatSession->assigned_user_id !== $user->id) {
+            if ($chatSession->assigned_user_id !== $user->id && $chatSession->peer_user_id !== $user->id) {
                 abort(403, 'Unauthorized access to this chat.');
             }
         }
@@ -103,7 +117,7 @@ class CRMChatController extends Controller
         // Mark messages as read dan update Firebase
         $this->markAsRead($chatSession, $request);
 
-        $chatSession->load(['customer', 'assignedUser', 'whatsappAccount']);
+        $chatSession->load(['customer', 'assignedUser', 'whatsappAccount', 'peerUser']);
         $messages = ChatMessage::where('chat_session_id', $chatSession->id)
             ->with('sender')
             ->orderBy('created_at', 'asc')
@@ -120,49 +134,58 @@ class CRMChatController extends Controller
         $user = $request->user();
         $waService = new WhatsAppService();
 
-        // Ambil semua pesan dari customer yang belum terbaca di session ini
+        // Ambil semua pesan yang dikirim oleh LAWAN BICARA (Customer atau Peer User) yang belum terbaca
         $unreadMessages = ChatMessage::where('chat_session_id', $chatSession->id)
-            ->where('sender_type', 'customer')
+            ->where('sender_id', '!=', $user->id)
             ->whereNull('read_at')
             ->get();
 
+        /** @var \App\Models\ChatMessage $message */
         foreach ($unreadMessages as $message) {
-            // 1. Mark as read di Meta Official (jika ada vendor_message_id)
-            if ($message->vendor_message_id && $chatSession->whatsappAccount->provider === 'official') {
+            // 1. Mark as read di Meta Official (hanya jika session customer & official)
+            if ($message->vendor_message_id && $chatSession->whatsappAccount?->provider === 'official') {
                 $waService->markAsRead($message->vendor_message_id, $chatSession->whatsappAccount);
             }
 
             // 2. Mark as read di Database Lokal
-            $message->update(['read_at' => now()]);
+            $message->read_at = now();
+            $message->save();
         }
 
-        // Hitung ulang sisa unread count total untuk user
+        // Hitung ulang sisa unread count total untuk user (Global)
         $unreadCount = ChatMessage::whereHas('chatSession', function($query) use ($user) {
-            $query->where('assigned_user_id', $user->id);
-        })->where('sender_type', 'customer')->whereNull('read_at')->count();
+            $query->where('assigned_user_id', $user->id)
+                  ->orWhere('peer_user_id', $user->id);
+        })->where('sender_id', '!=', $user->id)->whereNull('read_at')->count();
 
         // Hitung ulang unread count khusus untuk session ini
         $sessionUnreadCount = ChatMessage::where('chat_session_id', $chatSession->id)
-            ->where('sender_type', 'customer')
+            ->where('sender_id', '!=', $user->id)
             ->whereNull('read_at')
             ->count();
 
         // Update UI via Redis (Node.js Socket.io)
+        // Kirim notifikasi ke LAWAN BICARA agar UI mereka berubah jadi centang dua (read)
         try {
+            $otherUserId = ($chatSession->assigned_user_id === $user->id) 
+                ? $chatSession->peer_user_id 
+                : $chatSession->assigned_user_id;
+
             $data = [
                 'type' => 'messages_read',
-                'receiver_id' => $user->id,
+                'receiver_id' => $otherUserId,
                 'data' => [
                     'session_id' => $chatSession->id,
+                    'reader_id' => $user->id,
                     'unread_count' => $unreadCount,
-                    'session_unread_count' => $sessionUnreadCount,
+                    'session_unread_count' => 0, // Karena baru saja dibaca
                 ]
             ];
             
             Redis::publish('crm-events', json_encode($data));
                 
-        } catch (\Exception $e) {
-            \Log::error('Redis Publish Error (markAsRead): ' . $e->getMessage());
+        } catch (\Throwable $e) {
+            Log::error('Redis Publish Error (markAsRead): ' . $e->getMessage());
         }
 
         return response()->json([
@@ -177,27 +200,44 @@ class CRMChatController extends Controller
         $request->validate([
             'message' => 'required|string',
         ]);
+        $user = $request->user();
 
+        // CASE 1: Internal Staff Chat
+        if ($chatSession->peer_user_id) {
+            $message = ChatMessage::create([
+                'chat_session_id' => $chatSession->id,
+                'sender_id' => $user->id,
+                'sender_type' => 'user',
+                'message_body' => $request->message,
+                'message_type' => 'text',
+            ]);
+
+            $chatSession->update(['last_message_at' => now()]);
+
+            // Load relations needed for broadcast
+            $message->load('sender');
+
+            // Broadcast via Redis
+            $this->broadcastToPeer($chatSession, $message);
+
+            return response()->json($message);
+        }
+
+        // CASE 2: WhatsApp Chat
         $account = $chatSession->whatsappAccount;
-
-        if (!$account->isActive()) {
+        if (!$account || !$account->isActive()) {
             return response()->json([
-                'error' => 'Your WhatsApp account trial has expired or is inactive. Please upgrade your subscription.'
+                'error' => 'Your WhatsApp account is inactive or expired.'
             ], 403);
         }
 
         $waService = new WhatsAppService();
-        
-        $result = $waService->sendMessage(
-            $chatSession->customer->phone,
-            $request->message,
-            $account
-        );
+        $result = $waService->sendMessage($chatSession->customer->phone, $request->message, $account);
 
         if ($result['status']) {
             $message = ChatMessage::create([
                 'chat_session_id' => $chatSession->id,
-                'sender_id' => $request->user()->id,
+                'sender_id' => $user->id,
                 'sender_type' => 'user',
                 'message_body' => $request->message,
                 'message_type' => 'text',
@@ -209,5 +249,89 @@ class CRMChatController extends Controller
         }
 
         return response()->json(['error' => $result['message'] ?? 'Failed to send message'], 500);
+    }
+
+    public function startStaffChat(\App\Models\User $peerUser, Request $request)
+    {
+        $user = $request->user();
+        
+        $session = ChatSession::where(function($q) use ($user, $peerUser) {
+            $q->where('assigned_user_id', $user->id)
+              ->where('peer_user_id', $peerUser->id);
+        })->orWhere(function($q) use ($user, $peerUser) {
+            $q->where('assigned_user_id', $peerUser->id)
+              ->where('peer_user_id', $user->id);
+        })->first();
+        
+        if (!$session) {
+            $session = ChatSession::create([
+                'assigned_user_id' => $user->id,
+                'peer_user_id' => $peerUser->id,
+                'status' => 'open',
+                'last_message_at' => now(),
+            ]);
+        }
+        
+        return response()->json($session->load('peerUser'));
+    }
+
+    private function broadcastToPeer(ChatSession $session, ChatMessage $message)
+    {
+        try {
+            $receiverId = ($message->sender_id === $session->assigned_user_id) 
+                ? $session->peer_user_id 
+                : $session->assigned_user_id;
+
+            $data = [
+                'type' => 'new_message',
+                'receiver_id' => $receiverId,
+                'data' => [
+                    'session' => $session->load(['peerUser', 'assignedUser']),
+                    'message' => $message,
+                    'unread_count' => ChatMessage::whereHas('chatSession', function($query) use ($receiverId) {
+                        $query->where('assigned_user_id', $receiverId)
+                              ->orWhere('peer_user_id', $receiverId);
+                    })->where('sender_id', '!=', $receiverId)->whereNull('read_at')->count(),
+                ],
+                'notification' => [
+                    'title' => 'Pesan dari ' . ($message->sender->name ?? 'Staff'),
+                    'body' => $message->message_body,
+                    'data' => [
+                        'url' => route('crm.chat.index', ['staff_id' => $message->sender_id]),
+                    ]
+                ]
+            ];
+            
+            Redis::publish('crm-events', json_encode($data));
+        } catch (\Throwable $e) {
+            Log::error('Internal Broadcast Error: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Get recent unread messages for the notification dropdown
+     */
+    public function getRecentNotifications(Request $request)
+    {
+        $user = $request->user();
+        
+        $notifications = ChatMessage::with(['chatSession.customer', 'chatSession.peerUser', 'chatSession.assignedUser', 'sender'])
+            ->whereHas('chatSession', function($query) use ($user) {
+                $query->where('assigned_user_id', $user->id)
+                      ->orWhere('peer_user_id', $user->id);
+            })
+            ->where('sender_id', '!=', $user->id)
+            ->whereNull('read_at')
+            ->orderByDesc('created_at')
+            ->limit(5)
+            ->get();
+            
+        return response()->json([
+            'notifications' => $notifications,
+            'unread_count' => ChatMessage::whereHas('chatSession', function($query) use ($user) {
+                $query->where('assigned_user_id', $user->id)
+                      ->orWhere('peer_user_id', $user->id);
+            })->where('sender_id', '!=', $user->id)->whereNull('read_at')->count()
+        ]);
     }
 }

@@ -11,6 +11,7 @@ const props = defineProps({
     sessions: Array,
     whatsappAccounts: Array,
     availableStatuses: Array,
+    staffMembers: Array,
 });
 
 import { watch } from 'vue';
@@ -23,6 +24,7 @@ const searchQuery = ref('');
 const selectedStatus = ref('all');
 const selectedSession = ref(null);
 const filteredSessions = ref([]);
+const filteredStaff = ref([]);
 const showSidebar = ref(true); // Control sidebar visibility on mobile
 const messages = ref([]);
 const newMessage = ref('');
@@ -30,22 +32,45 @@ const messageContainer = ref(null);
 const isLoading = ref(false);
 
 const handleSearch = () => {
+    // If in Staff view, we filter the staff members
+    if (selectedStatus.value === 'internal_staff') {
+        let filtered = props.staffMembers;
+        if (searchQuery.value.trim()) {
+            const query = searchQuery.value.toLowerCase();
+            filtered = filtered.filter(user => 
+                user.name.toLowerCase().includes(query) || 
+                user.email.toLowerCase().includes(query)
+            );
+        }
+        filteredStaff.value = filtered;
+        return;
+    }
+
     let filtered = sessionsList.value;
 
     // Filter by Search Query (Name/Phone)
     if (searchQuery.value.trim()) {
         const query = searchQuery.value.toLowerCase();
         filtered = filtered.filter(session => {
-            return session.customer.name.toLowerCase().includes(query) || 
-                   session.customer.phone.includes(query);
+            if (session.customer) {
+                return session.customer.name.toLowerCase().includes(query) || 
+                       session.customer.phone.includes(query);
+            } else if (session.peer_user) {
+                return session.peer_user.name.toLowerCase().includes(query);
+            }
+            return false;
         });
     }
 
-    // Filter by Status
+    // Filter by Status (Customer Statuses)
     if (selectedStatus.value !== 'all') {
         filtered = filtered.filter(session => {
-            return session.customer.status === selectedStatus.value;
+            return session.customer && session.customer.status === selectedStatus.value;
         });
+    } else {
+        // Exclude staff chats from 'All' customer view for clarity, or leave them?
+        // User asked to have a filter, so maybe we separate them.
+        filtered = filtered.filter(s => s.customer_id !== null);
     }
 
     filteredSessions.value = filtered;
@@ -85,19 +110,21 @@ onMounted(() => {
     joinUserRoom(pageProps.auth.user.id);
 
     socket.on('new_message', (data) => {
-        const { session, message } = data;
+        const payload = data.data || data;
+        const { session, message } = payload;
+        const unread_count = payload.unread_count;
 
         // Update daftar session (pindahkan ke paling atas)
         const index = sessionsList.value.findIndex(s => s.id === session.id);
         
-        // Tambahkan flag unread jika pesan dari customer dan bukan session yang sedang dibuka
-        const isUnread = message.sender_type === 'customer' && (!selectedSession.value || selectedSession.value.id !== session.id);
+        // Tambahkan flag unread jika pesan bukan dari diri sendiri dan bukan session yang sedang dibuka
+        const isUnread = message.sender_id !== pageProps.auth.user.id && (!selectedSession.value || selectedSession.value.id !== session.id);
         
         // Get unread count from payload (sent by Laravel via Node)
         const updatedSession = { 
             ...session, 
             is_unread: isUnread || (index !== -1 && sessionsList.value[index].is_unread),
-            session_unread_count: data.unread_count || 0,
+            session_unread_count: unread_count || 0,
             last_message_at: message.created_at
         };
 
@@ -113,24 +140,40 @@ onMounted(() => {
 
         // Jika sedang membuka session tersebut, tambah pesan secara real-time
         if (selectedSession.value && selectedSession.value.id === session.id) {
-            const isMessageExist = messages.value.some(m => m.id === message.id);
-            if (!isMessageExist) {
-                messages.value.push(message);
-                scrollToBottom();
+            messages.value.push(message);
+            scrollToBottom();
+            
+            // Auto mark as read jika sedang buka chat
+            if (message.sender_id !== pageProps.auth.user.id) {
+                axios.post(route('crm.chat.read', session.id)).catch(e => console.error(e));
             }
         }
     });
 
     socket.on('messages_read', (data) => {
-        const { session_id, unread_count, session_unread_count } = data;
+        const payload = data.data || data;
+        const session_id = payload.session_id;
+        const session_unread_count = payload.session_unread_count;
+
+        // 1. Update unread count di sidebar
         const session = sessionsList.value.find(s => s.id === session_id);
         if (session) {
-            session.session_unread_count = session_unread_count;
-            if (session_unread_count === 0) {
+            session.session_unread_count = session_unread_count || 0;
+            if (session.session_unread_count === 0) {
                 session.is_unread = false;
             }
         }
+
+        // 2. Jika sedang membuka session ini, update status pesan (Double Check)
+        if (selectedSession.value && selectedSession.value.id === session_id) {
+            messages.value.forEach(msg => {
+                if (!msg.read_at && msg.sender_id === pageProps.auth.user.id) {
+                    msg.read_at = new Date().toISOString();
+                }
+            });
+        }
     });
+
 
     // Backup: Tetap biarkan Laravel Echo jika masih ingin digunakan
     if (window.Echo) {
@@ -163,6 +206,34 @@ const selectSession = async (session) => {
     }
 };
 
+const selectStaff = async (staff) => {
+    // Check if session already exists for this staff
+    const existingSession = sessionsList.value.find(s => s.peer_user_id === staff.id || (s.assigned_user_id === staff.id && s.peer_user_id === pageProps.auth.user.id));
+    
+    if (existingSession) {
+        selectSession(existingSession);
+        return;
+    }
+
+    // Otherwise create one
+    isLoading.value = true;
+    try {
+        const response = await axios.post(route('crm.chat.start-staff', staff.id));
+        const newSession = { 
+            ...response.data, 
+            session_unread_count: 0, 
+            is_staff_chat: true 
+        };
+        sessionsList.value.unshift(newSession);
+        selectSession(newSession);
+    } catch (error) {
+        console.error('Failed to start staff chat', error);
+        alert('Gagal memulai chat dengan pegawai');
+    } finally {
+        isLoading.value = false;
+    }
+};
+
 const sendMessage = async () => {
     if (!newMessage.value.trim() || !selectedSession.value) return;
 
@@ -189,8 +260,26 @@ const scrollToBottom = () => {
     });
 };
 
-const formatTime = (date) => {
-    return new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+const formatTime = (dateString) => {
+    if (!dateString) return '';
+    
+    // Check if the string has a T (ISO 8601)
+    let date;
+    if (dateString.includes('T')) {
+        date = new Date(dateString);
+    } else {
+        // Handle Laravel's YYYY-MM-DD HH:MM:SS format
+        // Replace space with T to make it ISO-like
+        date = new Date(dateString.replace(' ', 'T'));
+    }
+
+    if (isNaN(date.getTime())) return dateString;
+
+    return date.toLocaleTimeString('id-ID', { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: false 
+    });
 };
 
 const updateCustomerStatus = async (newStatus) => {
@@ -207,12 +296,12 @@ const updateCustomerStatus = async (newStatus) => {
         if (session) {
             session.customer.status = newStatus;
         }
-        
     } catch (error) {
         console.error('Gagal update status', error);
         alert('Gagal memperbarui status customer');
     }
 };
+
 </script>
 
 <template>
@@ -224,18 +313,18 @@ const updateCustomerStatus = async (newStatus) => {
         </template>
 
         <template #stats>
-            <div class="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-4 mb-2 md:mb-0">
-                <div class="bg-white/10 backdrop-blur-md rounded-lg p-3 md:p-4 border border-white/20 text-white">
-                    <div class="text-[10px] uppercase font-bold opacity-70">Total Chats</div>
-                    <div class="text-xl md:text-2xl font-bold">{{ sessionsList.length }}</div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 md:mb-0">
+                <div class="bg-white/10 backdrop-blur-md rounded-xl p-4 md:p-6 border border-white/20 text-white shadow-xl hover:bg-white/15 transition-all duration-300">
+                    <div class="text-[10px] uppercase font-bold opacity-70 mb-1 tracking-wider">Total Chats</div>
+                    <div class="text-2xl md:text-3xl font-bold tracking-tight">{{ sessionsList.length }}</div>
                 </div>
-                <div class="bg-white/10 backdrop-blur-md rounded-lg p-3 md:p-4 border border-white/20 text-white">
-                    <div class="text-[10px] uppercase font-bold opacity-70">Channels</div>
-                    <div class="text-xl md:text-2xl font-bold">{{ whatsappAccounts.length }}</div>
+                <div class="bg-white/10 backdrop-blur-md rounded-xl p-4 md:p-6 border border-white/20 text-white shadow-xl hover:bg-white/15 transition-all duration-300">
+                    <div class="text-[10px] uppercase font-bold opacity-70 mb-1 tracking-wider">Channels</div>
+                    <div class="text-2xl md:text-3xl font-bold tracking-tight">{{ whatsappAccounts.length }}</div>
                 </div>
-                <div class="bg-white/10 backdrop-blur-md rounded-lg p-3 md:p-4 border border-white/20 text-white col-span-2 md:col-span-1">
-                    <div class="text-[10px] uppercase font-bold opacity-70">Sent Today</div>
-                    <div class="text-xl md:text-2xl font-bold">24</div>
+                <div class="bg-white/10 backdrop-blur-md rounded-xl p-4 md:p-6 border border-white/20 text-white shadow-xl hover:bg-white/15 transition-all duration-300">
+                    <div class="text-[10px] uppercase font-bold opacity-70 mb-1 tracking-wider">Sent Today</div>
+                    <div class="text-2xl md:text-3xl font-bold tracking-tight">24</div>
                 </div>
             </div>
         </template>
@@ -271,54 +360,82 @@ const updateCustomerStatus = async (newStatus) => {
                         >
                             {{ status.name }}
                         </button>
+                        <button 
+                            @click="selectedStatus = 'internal_staff'; handleSearch()"
+                            :class="['px-3 py-1 rounded-full text-[10px] font-bold uppercase transition-all shrink-0', 
+                                    selectedStatus === 'internal_staff' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-100 dark:bg-gray-700 text-gray-500']"
+                        >
+                            Staff
+                        </button>
                     </div>
                 </div>
                 <div class="flex-1 overflow-y-auto custom-scrollbar pt-2">
-                    <div v-for="session in filteredSessions" :key="session.id" 
-                        @click="selectSession(session)"
-                        :class="['group p-4 cursor-pointer transition-all duration-200 border-b border-gray-100/50 dark:border-gray-700/50 relative mb-1 mx-2 rounded-xl', 
-                                selectedSession?.id === session.id 
-                                ? 'bg-white dark:bg-gray-700 shadow-md scale-[1.02] z-10' 
-                                : session.session_unread_count > 0 
-                                    ? 'bg-operra-50/40 dark:bg-operra-900/10' 
-                                    : 'hover:bg-white dark:hover:bg-gray-700 hover:shadow-sm hover:scale-[1.01] bg-gray-50/50 dark:bg-gray-800/20']">
-                        
-                        <!-- Active Indicator -->
-                        <div v-if="selectedSession?.id === session.id" class="absolute left-0 top-3 bottom-3 w-1.5 bg-operra-600 rounded-r-full shadow-[2px_0_8px_rgba(var(--color-operra-600),0.4)]"></div>
-                        
-                        <div class="flex gap-3">
-                            <div class="relative shrink-0">
-                                <div class="h-12 w-12 rounded-full bg-operra-100 dark:bg-operra-900/30 flex items-center justify-center text-operra-600 dark:text-operra-400 font-bold text-lg">
-                                    {{ session.customer.name.charAt(0) }}
-                                </div>
-                                <div v-if="session.status === 'open'" class="absolute bottom-0 right-0 h-3 w-3 bg-green-500 border-2 border-white dark:border-gray-800 rounded-full"></div>
+                    <!-- Staff List View -->
+                    <template v-if="selectedStatus === 'internal_staff'">
+                        <div v-for="staff in filteredStaff" :key="staff.id" 
+                            @click="selectStaff(staff)"
+                            :class="['group p-4 cursor-pointer transition-all duration-200 border-b border-gray-100/50 dark:border-gray-700/50 relative mb-1 mx-2 rounded-xl flex gap-3',
+                                    selectedSession?.peer_user_id === staff.id || (selectedSession?.assigned_user_id === staff.id && selectedSession?.peer_user_id === pageProps.auth.user.id)
+                                    ? 'bg-white dark:bg-gray-700 shadow-md scale-[1.02] z-10' 
+                                    : 'hover:bg-white dark:hover:bg-gray-700 hover:shadow-sm bg-gray-50/50 dark:bg-gray-800/20']">
+                            
+                            <div class="h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold">
+                                {{ staff.name.charAt(0) }}
                             </div>
                             <div class="flex-1 min-w-0">
-                                <div class="flex justify-between items-start mb-1">
-                                    <h4 :class="['font-bold text-sm truncate pr-2', session.is_unread ? 'text-operra-600 dark:text-operra-400' : 'text-gray-800 dark:text-gray-100']">
-                                        {{ session.customer.name }}
-                                    </h4>
-                                    <div class="flex flex-col items-end gap-1 shrink-0">
-                                        <span class="text-[10px] text-gray-400 font-medium">{{ formatTime(session.last_message_at) }}</span>
-                                        <div v-if="session.session_unread_count > 0" class="min-w-[18px] h-[18px] px-1 bg-operra-600 rounded-full flex items-center justify-center shadow-sm">
-                                            <span class="text-[10px] text-white font-bold">{{ session.session_unread_count }}</span>
-                                        </div>
-                                        <div v-else-if="session.is_unread" class="h-2 w-2 bg-operra-500 rounded-full animate-pulse"></div>
+                                <h4 class="font-bold text-sm text-gray-800 dark:text-gray-100 truncate">{{ staff.name }}</h4>
+                                <p class="text-[10px] text-gray-500 truncate">{{ staff.email }}</p>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- Customer Sessions View -->
+                    <template v-else>
+                        <div v-for="session in filteredSessions" :key="session.id" 
+                            @click="selectSession(session)"
+                            :class="['group p-4 cursor-pointer transition-all duration-200 border-b border-gray-100/50 dark:border-gray-700/50 relative mb-1 mx-2 rounded-xl', 
+                                    selectedSession?.id === session.id 
+                                    ? 'bg-white dark:bg-gray-700 shadow-md scale-[1.02] z-10' 
+                                    : session.session_unread_count > 0 
+                                        ? 'bg-operra-50/40 dark:bg-operra-900/10' 
+                                        : 'hover:bg-white dark:hover:bg-gray-700 hover:shadow-sm hover:scale-[1.01] bg-gray-50/50 dark:bg-gray-800/20']">
+                            
+                            <div v-if="selectedSession?.id === session.id" class="absolute left-0 top-3 bottom-3 w-1.5 bg-operra-600 rounded-r-full"></div>
+                            
+                            <div class="flex gap-3">
+                                <div class="relative shrink-0">
+                                    <div :class="['h-12 w-12 rounded-full flex items-center justify-center font-bold text-lg', session.peer_user_id ? 'bg-blue-100 text-blue-600' : 'bg-operra-100 text-operra-600']">
+                                        {{ (session.customer?.name || session.peer_user?.name || session.assigned_user?.name).charAt(0) }}
                                     </div>
+                                    <div v-if="session.status === 'open'" class="absolute bottom-0 right-0 h-3 w-3 bg-green-500 border-2 border-white dark:border-gray-800 rounded-full"></div>
                                 </div>
-                                <div class="flex justify-between items-center">
-                                    <p :class="['text-xs truncate flex items-center gap-1', session.is_unread ? 'text-gray-900 dark:text-gray-100 font-semibold' : 'text-gray-500 dark:text-gray-400']">
-                                        {{ session.customer.phone }}
-                                    </p>
-                                    <span :class="[
-                                        'text-[8px] px-1.5 py-0.5 rounded-full font-bold uppercase shrink-0 ml-2 shadow-sm text-white',
-                                    ]" :style="{ backgroundColor: availableStatuses.find(s => s.name === session.customer.status)?.color || '#94a3b8' }">
-                                        {{ session.customer.status }}
-                                    </span>
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex justify-between items-start mb-1">
+                                        <h4 :class="['font-bold text-sm truncate pr-2', session.is_unread ? (session.peer_user_id ? 'text-blue-600' : 'text-operra-600') : 'text-gray-800 dark:text-gray-100']">
+                                            {{ session.customer?.name || (session.peer_user_id ? (session.peer_user_id === $page.props.auth.user.id ? session.assigned_user.name : session.peer_user.name) : 'Staff') }}
+                                        </h4>
+                                        <div class="flex flex-col items-end gap-1 shrink-0">
+                                            <span class="text-[10px] text-gray-400 font-medium">{{ formatTime(session.last_message_at) }}</span>
+                                            <div v-if="session.session_unread_count > 0" class="min-w-[18px] h-[18px] px-1 bg-operra-600 rounded-full flex items-center justify-center">
+                                                <span class="text-[10px] text-white font-bold">{{ session.session_unread_count }}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="flex justify-between items-center">
+                                        <p class="text-xs truncate text-gray-500 dark:text-gray-400">
+                                            {{ session.customer?.phone || (session.peer_user?.email || 'Internal Chat') }}
+                                        </p>
+                                        <span v-if="session.customer" class="text-[8px] px-1.5 py-0.5 rounded-full font-bold uppercase text-white" :style="{ backgroundColor: availableStatuses.find(s => s.name === session.customer.status)?.color || '#94a3b8' }">
+                                            {{ session.customer.status }}
+                                        </span>
+                                        <span v-else class="text-[8px] px-1.5 py-0.5 rounded-full font-bold uppercase bg-blue-500 text-white">
+                                            STAFF
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
+                    </template>
                 </div>
             </div>
 
@@ -337,13 +454,15 @@ const updateCustomerStatus = async (newStatus) => {
                                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
                             </button>
                             
-                            <div class="h-10 w-10 rounded-full bg-operra-500 flex items-center justify-center text-white font-bold shadow-md shrink-0">
-                                {{ selectedSession.customer.name.charAt(0) }}
+                            <div :class="['h-10 w-10 rounded-full flex items-center justify-center text-white font-bold shadow-md shrink-0', selectedSession.peer_user_id ? 'bg-blue-500' : 'bg-operra-500']">
+                                {{ (selectedSession.customer?.name || (selectedSession.peer_user_id === $page.props.auth.user.id ? selectedSession.assigned_user.name : selectedSession.peer_user.name)).charAt(0) }}
                             </div>
                             <div class="min-w-0">
                                 <div class="flex items-center gap-2">
-                                    <div class="font-bold text-gray-800 dark:text-gray-200 truncate max-w-[120px] md:max-w-none">{{ selectedSession.customer.name }}</div>
-                                    <select 
+                                    <div class="font-bold text-gray-800 dark:text-gray-200 truncate max-w-[120px] md:max-w-none">
+                                        {{ selectedSession.customer?.name || (selectedSession.peer_user_id === $page.props.auth.user.id ? selectedSession.assigned_user.name : selectedSession.peer_user.name) }}
+                                    </div>
+                                    <select v-if="selectedSession.customer"
                                         v-model="selectedSession.customer.status" 
                                         @change="updateCustomerStatus($event.target.value)"
                                         class="text-[10px] uppercase font-bold px-1.5 py-0 h-5 rounded border-none bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 focus:ring-1 focus:ring-operra-500 cursor-pointer hidden sm:block"
@@ -352,15 +471,18 @@ const updateCustomerStatus = async (newStatus) => {
                                             {{ status.name }}
                                         </option>
                                     </select>
+                                    <span v-else class="text-[9px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-bold uppercase">Internal Staff</span>
                                 </div>
                                 <div class="flex items-center gap-1.5">
                                     <span class="h-2 w-2 bg-green-500 rounded-full shrink-0"></span>
-                                    <span class="text-[9px] md:text-[10px] text-gray-500 font-medium uppercase tracking-wider truncate">Active on {{ selectedSession.whatsapp_account.name }}</span>
+                                    <span class="text-[9px] md:text-[10px] text-gray-500 font-medium uppercase tracking-wider truncate">
+                                        {{ selectedSession.peer_user_id ? 'Internal Messaging' : 'Active on ' + selectedSession.whatsapp_account.name }}
+                                    </span>
                                 </div>
                             </div>
                         </div>
                         <div class="flex items-center gap-1 md:gap-2">
-                             <select 
+                             <select v-if="selectedSession.customer"
                                 v-model="selectedSession.customer.status" 
                                 @change="updateCustomerStatus($event.target.value)"
                                 class="text-[10px] uppercase font-bold px-1.5 py-0 h-6 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 focus:ring-1 focus:ring-operra-500 cursor-pointer sm:hidden"
@@ -376,13 +498,24 @@ const updateCustomerStatus = async (newStatus) => {
                     <!-- Messages -->
                     <div ref="messageContainer" class="flex-1 p-6 overflow-y-auto space-y-6 z-10 custom-scrollbar">
                         <div v-for="msg in messages" :key="msg.id" 
-                            :class="['flex w-full', msg.sender_type === 'user' ? 'justify-end' : 'justify-start']">
+                            :class="['flex w-full', msg.sender_id === $page.props.auth.user.id ? 'justify-end' : 'justify-start']">
                             <div :class="['max-w-[75%] p-3 rounded-2xl shadow-md relative', 
-                                    msg.sender_type === 'user' ? 'bg-operra-600 text-white rounded-tr-none' : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-tl-none']">
+                                    msg.sender_id === $page.props.auth.user.id ? 'bg-operra-600 text-white rounded-tr-none' : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-tl-none']">
                                 <div class="text-[13px] leading-relaxed">{{ msg.message_body }}</div>
-                                <div :class="['text-[9px] mt-1.5 flex items-center justify-end gap-1', msg.sender_type === 'user' ? 'text-operra-100' : 'text-gray-400']">
+                                <div :class="['text-[9px] mt-1.5 flex items-center justify-end gap-1', msg.sender_id === $page.props.auth.user.id ? 'text-operra-100' : 'text-gray-400']">
                                     {{ formatTime(msg.created_at) }}
-                                    <svg v-if="msg.sender_type === 'user'" class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                    
+                                    <!-- Status Icons (Read/Unread) -->
+                                    <template v-if="msg.sender_id === $page.props.auth.user.id">
+                                        <!-- Double Check (Read) -->
+                                        <svg v-if="msg.read_at" class="w-4 h-4 text-cyan-400 -mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M3 13l4 4L18 7m-5 0l5 5L22 7"></path>
+                                        </svg>
+                                        <!-- Single Check (Sent) -->
+                                        <svg v-else class="w-3.5 h-3.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path>
+                                        </svg>
+                                    </template>
                                 </div>
                             </div>
                         </div>
@@ -398,7 +531,7 @@ const updateCustomerStatus = async (newStatus) => {
                             <button type="button" class="text-gray-400 hover:text-operra-500"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg></button>
                             <input v-model="newMessage" type="text" 
                                 class="flex-1 rounded-xl border-none bg-white dark:bg-gray-700 dark:text-white shadow-inner focus:ring-2 focus:ring-operra-500 py-2.5 md:py-3 px-4 md:px-5 text-sm" 
-                                placeholder="Tulis pesan balasan...">
+                                :placeholder="selectedSession.peer_user_id ? 'Tulis pesan internal...' : 'Tulis pesan balasan...'">
                             <button type="submit" 
                                 class="h-10 w-10 md:h-12 md:w-12 shrink-0 rounded-xl bg-operra-600 hover:bg-operra-700 text-white flex items-center justify-center shadow-lg transition-all active:scale-95">
                                 <svg class="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>

@@ -27,9 +27,14 @@ class DashboardController extends Controller
 
         if ($user->hasRole('sales')) {
             $leadsQuery->where('assigned_to', $user->id);
-            $sessionsQuery->where('assigned_user_id', $user->id);
+            $sessionsQuery->where(function($q) use ($user) {
+                $q->where('assigned_user_id', $user->id)
+                  ->orWhere('peer_user_id', $user->id);
+            });
             // Only messages from their sessions
-            $mySessionIds = ChatSession::where('assigned_user_id', $user->id)->pluck('id');
+            $mySessionIds = ChatSession::where('assigned_user_id', $user->id)
+                ->orWhere('peer_user_id', $user->id)
+                ->pluck('id');
             $messagesQuery->whereIn('chat_session_id', $mySessionIds);
         }
 
@@ -44,7 +49,7 @@ class DashboardController extends Controller
         // 2. Recent CRM Activity
         $recentLeads = (clone $leadsQuery)->latest()->limit(5)->get();
         $recentChats = (clone $sessionsQuery)
-            ->with(['customer', 'assignedUser', 'whatsappAccount'])
+            ->with(['customer', 'assignedUser', 'whatsappAccount', 'peerUser'])
             ->latest()
             ->limit(5)
             ->get();

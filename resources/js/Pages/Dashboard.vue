@@ -185,11 +185,13 @@ const series = [{
                     </div>
                     <div class="px-6 pb-6">
                         <div v-for="chat in recentChats" :key="chat.id" class="mb-3 flex items-center gap-4 p-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors rounded-xl border border-transparent hover:border-gray-100 dark:hover:border-gray-700">
-                            <div class="h-10 w-10 shrink-0 rounded-full bg-gradient-to-br from-operra-500 to-indigo-600 flex items-center justify-center text-white text-sm font-black shadow-lg">
-                                {{ chat.customer.name.charAt(0) }}
+                            <div :class="['h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-white text-sm font-black shadow-lg', chat.customer ? 'bg-gradient-to-br from-operra-500 to-indigo-600' : 'bg-gradient-to-br from-blue-500 to-indigo-700']">
+                                {{ (chat.customer?.name || (chat.peer_user_id === $page.props.auth.user.id ? chat.assigned_user.name : chat.peer_user?.name) || 'S').charAt(0) }}
                             </div>
                             <div class="flex-1 min-w-0">
-                                <p class="text-sm font-bold text-gray-700 dark:text-gray-200 truncate">{{ chat.customer.name }}</p>
+                                <p class="text-sm font-bold text-gray-700 dark:text-gray-200 truncate">
+                                    {{ chat.customer?.name || (chat.peer_user_id === $page.props.auth.user.id ? chat.assigned_user.name : chat.peer_user?.name) }}
+                                </p>
                                 <p class="text-[10px] text-gray-500 truncate font-medium">By: {{ chat.assigned_user.name }}</p>
                             </div>
                             <div class="text-right shrink-0">

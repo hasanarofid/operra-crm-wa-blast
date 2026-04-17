@@ -110,9 +110,12 @@ redisSub.on('message', (channel, message) => {
         console.log('Received event from Laravel:', event.type);
 
         // 1. Emit to Socket.io (Real-time update)
-        if (event.receiver_id) {
-            io.to(`inbox_user_${event.receiver_id}`).emit('new_message', event.data);
-            io.to('global_admin').emit('new_message_global', event.data);
+        if (event.receiver_id && event.type) {
+            io.to(`inbox_user_${event.receiver_id}`).emit(event.type, event.data);
+            console.log(`Emitted ${event.type} to user ${event.receiver_id}`);
+            
+            // Juga kirim ke room global jika perlu (misal: untuk Admin Dashboard)
+            io.to('global_admin').emit(event.type + '_global', event.data);
         }
 
         // 2. Send Push Notification (Web Push)

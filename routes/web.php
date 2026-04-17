@@ -23,6 +23,8 @@ use App\Http\Controllers\PushSubscriptionController;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Redis;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 
 Route::get('/', function () {
@@ -62,6 +64,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/inbox/{chatSession}', [CRMChatController::class, 'show'])->name('crm.chat.show');
     Route::post('/inbox/{chatSession}/mark-as-read', [CRMChatController::class, 'markAsRead'])->name('crm.chat.mark-as-read');
     Route::post('/inbox/{chatSession}/send', [CRMChatController::class, 'sendMessage'])->name('crm.chat.send');
+    Route::post('/inbox/staff/{peerUser}', [CRMChatController::class, 'startStaffChat'])->name('crm.chat.start-staff');
+    Route::get('/notifications/recent', [CRMChatController::class, 'getRecentNotifications'])->name('notifications.recent');
 
     // Settings
     Route::get('/settings', [SettingController::class, 'index'])->name('settings.index');

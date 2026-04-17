@@ -8,26 +8,27 @@ import { socket, joinUserRoom } from '@/socket';
 
 // Global variable to persist across page navigations (Inertia re-mounts)
 let globalLastSoundPlayedMessageId = null;
-let globalAudio = null;
 
 const collapseShow = ref("hidden");
 const isDark = ref(true); // Default dark
 const realTimeUnreadCount = ref(null);
+const notifications = ref([]);
 const showPermissionPrompt = ref(false);
 let unsubInbox = null;
 let unsubNotif = null;
 
 const page = usePage();
 
+const notificationAudio = ref(null);
+
 const playNotificationSound = () => {
-    if (!globalAudio) {
-        globalAudio = new Audio('/sound/sound.mp3');
+    if (notificationAudio.value) {
+        notificationAudio.value.currentTime = 0;
+        notificationAudio.value.play().catch(e => {
+            console.warn('[PT. Tigasatu Cipta Solusi] Suara gagal diputar (biasanya karena belum ada interaksi user di halaman ini):', e);
+            showPermissionPrompt.value = true;
+        });
     }
-    console.log('[PT. Tigasatu Cipta Solusi] Memutar suara notifikasi...');
-    globalAudio.play().catch(e => {
-        console.warn('[PT. Tigasatu Cipta Solusi] Suara gagal diputar (biasanya karena belum ada interaksi user di halaman ini):', e);
-        showPermissionPrompt.value = true;
-    });
 };
 
 const hasRole = (role) => page.props.auth.user.roles.includes(role);
@@ -63,6 +64,25 @@ const subscribeToPush = async () => {
     }
 };
 
+const manualUnlockAudio = () => {
+    if (notificationAudio.value && !sessionStorage.getItem('tigasatu_audio_unlocked')) {
+        notificationAudio.value.muted = true;
+        notificationAudio.value.play().then(() => {
+            notificationAudio.value.pause();
+            notificationAudio.value.muted = false;
+            notificationAudio.value.currentTime = 0;
+            console.log('[PT. Tigasatu Cipta Solusi] Audio system unlocked by user interaction');
+            showPermissionPrompt.value = false;
+            sessionStorage.setItem('tigasatu_audio_unlocked', 'true');
+            // Remove listener after first successful unlock
+            document.removeEventListener('click', manualUnlockAudio);
+            document.removeEventListener('touchstart', manualUnlockAudio);
+        }).catch(e => {
+            console.warn('[PT. Tigasatu Cipta Solusi] Interaction occurred but audio still locked:', e);
+        });
+    }
+};
+
 const requestPermissions = async () => {
     // 1. Service Worker Registration
     if ('serviceWorker' in navigator) {
@@ -82,29 +102,8 @@ const requestPermissions = async () => {
         }
     }
 
-    // 2. Unlock Audio
-    // Create audio if not exists
-    if (!globalAudio) {
-        globalAudio = new Audio('/sound/sound.mp3');
-    }
-    
-    // Play a very short sound to unlock audio context
-    globalAudio.muted = true; // Mute first to be safe
-    globalAudio.play().then(() => {
-        globalAudio.pause();
-        globalAudio.muted = false;
-        globalAudio.currentTime = 0;
-        console.log('[PT. Tigasatu Cipta Solusi] Audio system unlocked successfully');
-        showPermissionPrompt.value = false;
-        
-        // Optional: Save to session storage that user has dismissed/enabled for this session
-        sessionStorage.setItem('tigasatu_audio_unlocked', 'true');
-    }).catch(e => {
-        console.error('[PT. Tigasatu Cipta Solusi] Gagal unlock audio:', e);
-        // Even if it fails, we close the prompt to not annoy the user, 
-        // it will reappear if playNotificationSound fails again later
-        showPermissionPrompt.value = false;
-    });
+    // 2. Unlock Audio manually
+    manualUnlockAudio();
 };
 
 function toggleCollapseShow(classes) {
@@ -122,12 +121,28 @@ function toggleTheme() {
     }
 }
 
+const fetchNotifications = async () => {
+    try {
+        const response = await axios.get(route('notifications.recent'));
+        notifications.value = response.data.notifications;
+        realTimeUnreadCount.value = response.data.unread_count;
+    } catch (error) {
+        console.warn('[Operra] Failed to fetch notifications', error);
+    }
+};
+
+const goToChat = (notif) => {
+    window.location.href = route('crm.chat.index', { customer_id: notif.chat_session.customer_id });
+};
+
+const formatTime = (date) => {
+    return new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+};
+
 onMounted(() => {
-    // Check if we should show prompt
     const isAudioUnlocked = sessionStorage.getItem('tigasatu_audio_unlocked');
     
     if (("Notification" in window && Notification.permission !== 'granted') || !isAudioUnlocked) {
-        // Delay slightly for better UX
         setTimeout(() => {
             showPermissionPrompt.value = true;
         }, 1500);
@@ -142,23 +157,41 @@ onMounted(() => {
         document.documentElement.classList.add('dark');
     }
 
-    // Global notification sound & unread count listener
     if (page.props.auth.user) {
         joinUserRoom(page.props.auth.user.id);
+        fetchNotifications();
+
+        // Add one-time listeners to unlock audio on first interaction
+        if (!sessionStorage.getItem('tigasatu_audio_unlocked')) {
+            document.addEventListener('click', manualUnlockAudio);
+            document.addEventListener('touchstart', manualUnlockAudio);
+        }
 
         socket.on('new_message', (data) => {
-            const { message, unread_count } = data;
+            const payload = data.data || data;
+            const { message, unread_count } = payload;
+            
+            console.log('[Operra] Event real-time diterima:', payload);
             
             // Update unread count global
-            realTimeUnreadCount.value = unread_count;
+            if (typeof unread_count !== 'undefined') {
+                realTimeUnreadCount.value = unread_count;
+            }
 
-            // Play sound if customer message
-            if (message.sender_type === 'customer' && message.id !== globalLastSoundPlayedMessageId) {
-                // Hanya bunyikan suara jika bukan loading pertama kali (saat web pertama kali dibuka)
-                if (globalLastSoundPlayedMessageId !== null) {
-                    playNotificationSound();
+            // Hanya mainkan suara jika pengirim BUKAN diri sendiri
+            if (message && message.sender_id !== page.props.auth.user.id) {
+                console.log('[Operra] Memainkan suara notifikasi...');
+                playNotificationSound();
+                
+                // Ensure notification has session info for the dropdown link
+                if (!message.chat_session && payload.session) {
+                    message.chat_session = payload.session;
                 }
-                globalLastSoundPlayedMessageId = message.id;
+                
+                notifications.value.unshift(message);
+                if (notifications.value.length > 5) {
+                    notifications.value.pop();
+                }
             }
         });
 
@@ -171,8 +204,6 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-    // Socket.io doesn't strictly need manual unsub for these specific listeners 
-    // if using a global connection, but we could do socket.off() if desired.
     socket.off('new_message');
     socket.off('messages_read');
 });
@@ -180,11 +211,12 @@ onUnmounted(() => {
 
 <template>
   <div>
-    <!-- Fake fields to prevent browser from showing 'Update Password' or 'Login' popups -->
     <div style="position: absolute; left: -9999px; top: -9999px;">
         <input type="text" name="username_fake" autocomplete="username" tabindex="-1">
         <input type="password" name="password_fake" autocomplete="new-password" tabindex="-1">
     </div>
+
+    <audio ref="notificationAudio" src="/sound/sound.mp3" preload="auto"></audio>
 
     <!-- Sidebar -->
     <nav class="md:left-0 md:block md:fixed md:top-0 md:bottom-0 md:overflow-y-auto md:flex-row md:flex-nowrap md:overflow-hidden shadow-xl bg-white dark:bg-gray-800 flex flex-wrap items-center justify-between relative md:w-64 z-50 py-4 px-6">
@@ -430,20 +462,53 @@ onUnmounted(() => {
             <slot name="header" />
           </span>
           <!-- User & Theme -->
-          <ul class="flex-row list-none items-center hidden md:flex gap-4">
+           <ul class="flex-row list-none items-center hidden md:flex gap-4">
              <li class="inline-block relative">
-                <Link :href="route('crm.chat.index')" class="text-white hover:text-operra-200 transition-colors duration-200 relative block">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
-                    </svg>
-                    <!-- Notification Badge -->
-                    <span v-if="(realTimeUnreadCount ?? $page.props.unreadCount) > 0" class="absolute -top-1 -right-1 flex h-4 w-4">
-                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                        <span class="relative inline-flex rounded-full h-4 w-4 bg-red-500 text-[10px] items-center justify-center font-bold text-white">
-                            {{ realTimeUnreadCount ?? $page.props.unreadCount }}
-                        </span>
-                    </span>
-                </Link>
+                <Dropdown align="right" width="80">
+                    <template #trigger>
+                        <button class="text-white hover:text-operra-200 transition-colors duration-200 relative block">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
+                            </svg>
+                            <!-- Notification Badge -->
+                            <span v-if="(realTimeUnreadCount ?? $page.props.unreadCount) > 0" class="absolute -top-1 -right-1 flex h-4 w-4">
+                                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                                <span class="relative inline-flex rounded-full h-4 w-4 bg-red-500 text-[10px] items-center justify-center font-bold text-white">
+                                    {{ realTimeUnreadCount ?? $page.props.unreadCount }}
+                                </span>
+                            </span>
+                        </button>
+                    </template>
+                    <template #content>
+                        <div class="px-3 py-2 bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center rounded-t-lg">
+                            <span class="text-[10px] font-bold uppercase text-gray-500">Pesan Terbaru</span>
+                            <Link :href="route('crm.chat.index')" class="text-[10px] font-bold text-operra-500 hover:underline">Lihat Semua</Link>
+                        </div>
+                        <div class="max-h-96 overflow-y-auto custom-scrollbar">
+                            <div v-if="notifications.length === 0" class="p-6 text-center text-gray-500 text-xs italic">
+                                Belum ada pesan masuk
+                            </div>
+                            <div v-for="notif in notifications" :key="notif.id" 
+                                @click="goToChat(notif)" 
+                                class="p-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer transition-colors group">
+                                <div class="flex gap-3">
+                                    <div :class="['h-9 w-9 rounded-full flex items-center justify-center font-bold text-sm shrink-0 group-hover:scale-110 transition-transform', notif.chat_session?.peer_user_id ? 'bg-blue-100 text-blue-600' : 'bg-operra-100 text-operra-600']">
+                                        {{ (notif.chat_session?.customer?.name || notif.sender?.name || '?').charAt(0) }}
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex justify-between items-center mb-0.5">
+                                            <span class="text-xs font-bold text-gray-800 dark:text-gray-200 truncate pr-2">
+                                                {{ notif.chat_session?.customer?.name || notif.sender?.name || 'Staff' }}
+                                            </span>
+                                            <span class="text-[9px] text-gray-400 whitespace-nowrap">{{ formatTime(notif.created_at) }}</span>
+                                        </div>
+                                        <p class="text-[11px] text-gray-500 dark:text-gray-400 truncate">{{ notif.message_body }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </Dropdown>
              </li>
              <li class="inline-block relative">
                 <button @click="toggleTheme" class="text-white hover:text-operra-200 transition-colors duration-200">

@@ -43,8 +43,9 @@ class HandleInertiaRequests extends Middleware
                 ] : null,
             ],
             'unreadCount' => $request->user() ? ChatMessage::whereHas('chatSession', function($query) use ($request) {
-                $query->where('assigned_user_id', $request->user()->id);
-            })->where('sender_type', 'customer')->whereNull('read_at')->count() : 0,
+                $query->where('assigned_user_id', $request->user()->id)
+                      ->orWhere('peer_user_id', $request->user()->id);
+            })->where('sender_id', '!=', $request->user()->id)->whereNull('read_at')->count() : 0,
             'vapidPublicKey' => env('VAPID_PUBLIC_KEY'),
         ];
     }

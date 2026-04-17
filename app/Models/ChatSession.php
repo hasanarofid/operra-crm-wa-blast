@@ -12,6 +12,7 @@ class ChatSession extends Model
         'whatsapp_account_id',
         'customer_id',
         'assigned_user_id',
+        'peer_user_id',
         'status',
         'last_message_at',
     ];
@@ -33,6 +34,11 @@ class ChatSession extends Model
     public function assignedUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assigned_user_id');
+    }
+
+    public function peerUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'peer_user_id');
     }
 
     public function messages(): HasMany
