@@ -1,0 +1,1 @@
+import{_ as o}from"./_plugin-vue_export-helper-DlAUqK2U.js";import{g as a,o as r,O as t}from"./app-BjLEf2cL.js";const e={};function c(s,i){return r(),a("img",t({src:"/images/logotigasatu.jpg",alt:"PT. Tigasatu Cipta Solusi"},s.$attrs,{class:"dark:brightness-110"}),null,16)}const l=o(e,[["render",c]]);export{l as A};
