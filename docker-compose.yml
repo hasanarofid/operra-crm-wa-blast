@@ -22,7 +22,7 @@ services:
     container_name: operra-node
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "3001:3000"
     volumes:
       - ./node-service:/usr/src/app
       - /usr/src/app/node_modules
@@ -37,7 +37,7 @@ services:
     container_name: operra-nginx
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "8180:80"
     volumes:
       - ./:/var/www
       - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf
@@ -58,7 +58,7 @@ services:
       MYSQL_PASSWORD: ${DB_PASSWORD:-root}
       MYSQL_USER: ${DB_USERNAME:-root}
     ports:
-      - "3306:3306"
+      - "3307:3306"
     volumes:
       - .docker/dbdata:/var/lib/mysql
     networks:
@@ -70,7 +70,7 @@ services:
     container_name: operra-redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "6380:6379"
     networks:
       - operra-network
 
