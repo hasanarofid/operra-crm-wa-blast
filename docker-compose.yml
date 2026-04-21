@@ -19,6 +19,15 @@ services:
     restart: unless-stopped
     ports:
       - "53002:3000"
+    environment:
+      - NODE_ENV=production
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - WHATSAPP_VERIFY_TOKEN=${WHATSAPP_VERIFY_TOKEN}
+      - META_APP_SECRET=${META_APP_SECRET:-}
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
+      - VAPID_EMAIL=${VAPID_EMAIL:-}
     volumes:
       - ./node-service:/usr/src/app
       - /usr/src/app/node_modules
